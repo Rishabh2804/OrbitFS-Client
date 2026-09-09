@@ -1,0 +1,2 @@
+-keep class org.orbitfs.** { *; }
+-dontwarn org.orbitfs.**

@@ -1,0 +1,27 @@
+### Android ###
+*.apk
+*.ap_
+*.aab
+.bin/
+gen/
+proguard/
+proguard-logs/
+captures/
+.externalNativeBuild/
+.cxx/
+*.so
+
+### Android-specific ###
+.DS_Store
+*.iml
+.idea/
+.gradle/
+/local.properties
+/.vscode/
+*.gcda
+
+### Build ###
+/build/
+/app/build/
+*.jar
+!.gitignore
