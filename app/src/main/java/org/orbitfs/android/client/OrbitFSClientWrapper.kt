@@ -94,26 +94,15 @@ class OrbitFSClientWrapper(
     suspend fun list(path: String): List<FileInfo> = withContext(Dispatchers.IO) {
         val handle = openHandle(path)
         try {
-            val entries = requireClient().list(handle)
+            val entries = requireClient().listWithStat(handle)
             entries.map { entry ->
-                val fullPath = if (path.isEmpty()) entry else if (path.endsWith("/")) "$path$entry" else "$path/$entry"
-                var statResult: org.orbitfs.common.model.FileStat? = null
-                try {
-                    val entryHandle = openHandle(fullPath)
-                    try {
-                        statResult = requireClient().stat(entryHandle)
-                    } finally {
-                        closeHandle(entryHandle)
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to stat entry: $fullPath", e)
-                }
+                val fullPath = if (path.isEmpty()) entry.name() else if (path.endsWith("/")) "$path${entry.name()}" else "$path/${entry.name()}"
                 FileInfo(
-                    name = entry,
+                    name = entry.name(),
                     path = fullPath,
-                    size = statResult?.size() ?: 0L,
-                    isDirectory = statResult?.isDirectory() ?: false,
-                    lastModified = statResult?.lastModifiedMillis() ?: 0L
+                    size = entry.size(),
+                    isDirectory = entry.isDir(),
+                    lastModified = 0L
                 )
             }
         } catch (e: Exception) {
