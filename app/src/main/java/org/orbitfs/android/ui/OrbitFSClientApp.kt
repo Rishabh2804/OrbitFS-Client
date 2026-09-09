@@ -82,6 +82,11 @@ fun OrbitFSRoot(
     val context = LocalContext.current
 
     val currentPath = viewModel.currentPath
+    val displayTitle = if (currentPath.isEmpty()) {
+        "Root"
+    } else {
+        currentPath.removeSuffix("/").substringAfterLast("/")
+    }
     val isHostView = connectionState !is ConnectionState.Connected
 
     Scaffold(
@@ -89,7 +94,7 @@ fun OrbitFSRoot(
             TopAppBar(
                 title = {
                     Text(
-                        text = if (isHostView) "OrbitFS" else (currentPath.ifEmpty { "Root" }),
+                        text = if (isHostView) "OrbitFS" else displayTitle,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onPrimary
