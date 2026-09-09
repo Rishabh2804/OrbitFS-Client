@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
 data class ConnectionConfig(
-    val host: String = "192.168.1.100",
+    val host: String = "192.168.0.5",
     val port: Int = 9090,
     val authToken: String? = null
 )

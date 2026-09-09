@@ -120,7 +120,7 @@ class ConnectionManager(
                 if (current is ConnectionState.Connected) {
                     val wrapper = client ?: break
                     try {
-                        wrapper.stat("/")
+                        wrapper.ensureConnected()
                     } catch (e: Exception) {
                         Log.w(TAG, "Connection lost, will reconnect", e)
                         _connectionState.update { ConnectionState.Disconnected }
