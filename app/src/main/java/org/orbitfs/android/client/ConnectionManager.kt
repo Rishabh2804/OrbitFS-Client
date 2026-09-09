@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.orbitfs.android.data.ConnectionConfig
-import org.orbitfs.android.data.SettingsRepository
+import org.orbitfs.android.data.SavedHost
 import java.io.IOException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -20,33 +20,19 @@ import kotlin.time.Duration.Companion.seconds
 private const val TAG = "ConnectionManager"
 
 class ConnectionManager(
-    private val settingsRepository: SettingsRepository,
     private val scope: CoroutineScope
 ) {
 
     private var client: OrbitFSClientWrapper? = null
     private var reconnectJob: Job? = null
 
-    private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
+    private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected(ConnectionConfig()))
     val connectionState: StateFlow<ConnectionState> = _connectionState
 
-    val currentHost: String
-        get() = settingsRepository.host
-
-    val currentPort: Int
-        get() = settingsRepository.port
-
     val currentConfig: ConnectionConfig
-        get() = settingsRepository.currentConfig
-
-    fun updateConfig(config: ConnectionConfig) {
-        settingsRepository.updateConfig(config)
-    }
+        get() = connectionState.value.config
 
     fun connect(config: ConnectionConfig) {
-        val current = _connectionState.value
-        if (current is ConnectionState.Connected) return
-
         val oldClient = client
         client = null
 
@@ -70,7 +56,7 @@ class ConnectionManager(
                     result.onSuccess {
                         client = wrapper
                         _connectionState.update { ConnectionState.Connected(config) }
-                        Log.d(TAG, "Connected on attempt $attempts")
+                        Log.d(TAG, "Connected on attempt $attempts to ${config.host}:${config.port}")
                         startReconnectMonitor()
                     }.onFailure { error ->
                         _connectionState.update {
@@ -123,7 +109,7 @@ class ConnectionManager(
                         wrapper.ensureConnected()
                     } catch (e: Exception) {
                         Log.w(TAG, "Connection lost, will reconnect", e)
-                        _connectionState.update { ConnectionState.Disconnected }
+                        _connectionState.update { ConnectionState.Disconnected(current.config) }
                     }
                 }
                 delay(5000.milliseconds)
@@ -138,7 +124,7 @@ class ConnectionManager(
             client?.disconnect()
         }
         client = null
-        _connectionState.update { ConnectionState.Disconnected }
+        _connectionState.update { ConnectionState.Disconnected(currentConfig) }
     }
 
     suspend fun getClient(): OrbitFSClientWrapper {
@@ -152,21 +138,27 @@ class ConnectionManager(
     fun isConnected(): Boolean {
         return connectionState.value is ConnectionState.Connected
     }
+
+    fun connectToSavedHost(host: SavedHost) {
+        connect(ConnectionConfig(host.host, host.port, host.authToken))
+    }
 }
 
 sealed class ConnectionState {
-    data object Disconnected : ConnectionState()
-    data class Connecting(val config: ConnectionConfig) : ConnectionState()
-    data class Connected(val config: ConnectionConfig) : ConnectionState()
+    abstract val config: ConnectionConfig
+
+    data class Disconnected(override val config: ConnectionConfig) : ConnectionState()
+    data class Connecting(override val config: ConnectionConfig) : ConnectionState()
+    data class Connected(override val config: ConnectionConfig) : ConnectionState()
     data class Error(
-        val config: ConnectionConfig,
+        override val config: ConnectionConfig,
         val message: String,
         val attempt: Int,
         val maxAttempts: Int
     ) : ConnectionState()
 
     data class GaveUp(
-        val config: ConnectionConfig,
+        override val config: ConnectionConfig,
         val message: String
     ) : ConnectionState()
 }

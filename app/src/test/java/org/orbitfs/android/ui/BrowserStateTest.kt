@@ -11,14 +11,14 @@ class BrowserStateTest {
     @Test
     fun `BrowserState default path is root`() {
         val state = BrowserState()
-        assertEquals("/", state.currentPath)
+        assertEquals("", state.currentPath)
     }
 
     @Test
     fun `FileInfo isDirectory displays with trailing slash`() {
         val file = FileInfo(
             name = "documents",
-            path = "/documents",
+            path = "documents",
             size = 0L,
             isDirectory = true,
             lastModified = 0L
@@ -30,7 +30,7 @@ class BrowserStateTest {
     fun `FileInfo file has no trailing slash`() {
         val file = FileInfo(
             name = "document.txt",
-            path = "/document.txt",
+            path = "document.txt",
             size = 1024L,
             isDirectory = false,
             lastModified = 0L
@@ -40,29 +40,29 @@ class BrowserStateTest {
 
     @Test
     fun `navigateToParent from top-level path`() {
-        val current = "/documents"
+        val current = "documents"
         val parent = computeParentPath(current)
-        assertEquals("/", parent)
+        assertEquals("", parent)
     }
 
     @Test
     fun `navigateToParent from root stays root`() {
-        val current = "/"
+        val current = ""
         val parent = computeParentPath(current)
-        assertEquals("/", parent)
+        assertEquals("", parent)
     }
 
     @Test
     fun `navigateToParent from nested path`() {
-        val current = "/a/b/c"
+        val current = "a/b/c"
         val parent = computeParentPath(current)
-        assertEquals("/a/b", parent)
+        assertEquals("a/b", parent)
     }
 
     @Test
     fun `ConnectionConfig has correct defaults`() {
         val config = ConnectionConfig()
-        assertEquals("192.168.1.100", config.host)
+        assertEquals("192.168.0.5", config.host)
         assertEquals(9090, config.port)
     }
 
@@ -107,9 +107,9 @@ class BrowserStateTest {
     }
 
     fun computeParentPath(current: String): String {
-        if (current == "/" || current.isEmpty()) return "/"
+        if (current == "/" || current.isEmpty()) return ""
         val trimmed = current.removeSuffix("/")
         val lastSlash = trimmed.lastIndexOf("/")
-        return if (lastSlash <= 0) "/" else trimmed.substring(0, lastSlash)
+        return if (lastSlash <= 0) "" else trimmed.substring(0, lastSlash)
     }
 }

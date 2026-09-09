@@ -140,6 +140,27 @@ class OrbitFSClientWrapper(
         }
     }
 
+    suspend fun readFile(path: String): ByteArray = withContext(Dispatchers.IO) {
+        Log.d(TAG, "readFile: path='$path'")
+        val handle = openHandle(path)
+        Log.d(TAG, "readFile: handle=$handle")
+        try {
+            val stat = requireClient().stat(handle)
+            Log.d(TAG, "readFile: stat size=${stat.size()}, isDir=${stat.isDirectory()}")
+            if (stat.isDirectory()) {
+                throw IOException("Cannot read a directory: $path")
+            }
+            val data = requireClient().read(handle, 0, stat.size().toInt())
+            Log.d(TAG, "readFile: read ${data.size} bytes")
+            data
+        } catch (e: Exception) {
+            Log.e(TAG, "readFile failed for '$path'", e)
+            throw IOException("readFile failed: ${e.message}", e)
+        } finally {
+            closeHandle(handle)
+        }
+    }
+
     private fun openHandle(path: String): String {
         if (Thread.currentThread().isInterrupted) {
             throw CancellationException("Cancelled")

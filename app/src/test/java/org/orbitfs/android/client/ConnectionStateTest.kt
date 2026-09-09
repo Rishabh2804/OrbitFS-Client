@@ -9,7 +9,8 @@ class ConnectionStateTest {
 
     @Test
     fun `Disconnected is a valid state`() {
-        val state = ConnectionState.Disconnected
+        val config = ConnectionConfig()
+        val state = ConnectionState.Disconnected(config)
         assertTrue(state is ConnectionState.Disconnected)
     }
 
@@ -55,7 +56,7 @@ class ConnectionStateTest {
     @Test
     fun `ConnectionState sealed class has all expected variants`() {
         val states = listOf(
-            ConnectionState.Disconnected,
+            ConnectionState.Disconnected(ConnectionConfig()),
             ConnectionState.Connecting(ConnectionConfig()),
             ConnectionState.Connected(ConnectionConfig()),
             ConnectionState.Error(ConnectionConfig(), "err", 1, 5),
