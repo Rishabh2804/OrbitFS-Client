@@ -161,6 +161,15 @@ class FileBrowserViewModel(
         ))
     }
 
+    fun updateHost(id: String, name: String, host: String, port: Int) {
+        hostRepository.updateHost(SavedHost(
+            id = id,
+            name = name.ifEmpty { host },
+            host = host,
+            port = port
+        ))
+    }
+
     fun deleteHost(id: String) {
         hostRepository.removeHost(id)
     }

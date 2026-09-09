@@ -46,6 +46,8 @@ class MainActivity : ComponentActivity() {
                 val currentPath = viewModel.currentPath
                 if (currentPath.isNotEmpty() && connectionManager.isConnected()) {
                     viewModel.navigateTo("..")
+                } else if (connectionManager.isConnected()) {
+                    viewModel.disconnect()
                 } else {
                     if (System.currentTimeMillis() - backPressedAt < 2000) {
                         finish()

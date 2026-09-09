@@ -21,8 +21,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -30,6 +33,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -72,32 +77,49 @@ fun OrbitFSRoot(
     val hosts by hostRepository.hosts.collectAsStateWithLifecycle()
 
     var showAddHostDialog by rememberSaveable { mutableStateOf(false) }
+    var editingHost by rememberSaveable { mutableStateOf<SavedHost?>(null) }
+    var showMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    val currentPath = viewModel.currentPath
+    val isHostView = connectionState !is ConnectionState.Connected
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = "OrbitFS",
+                        text = if (isHostView) "OrbitFS" else (currentPath.ifEmpty { "Root" }),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                 },
-                actions = {
-                    if (connectionState is ConnectionState.Connected) {
-                        IconButton(onClick = { viewModel.disconnect() }) {
+                navigationIcon = {
+                    if (!isHostView && currentPath.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.navigateTo("..") }) {
                             Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Disconnect",
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Go back",
                                 tint = MaterialTheme.colorScheme.onPrimary
                             )
                         }
-                    } else {
+                    }
+                },
+                actions = {
+                    if (isHostView) {
                         IconButton(onClick = { showAddHostDialog = true }) {
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = "Add host",
+                                tint = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    } else {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Menu",
                                 tint = MaterialTheme.colorScheme.onPrimary
                             )
                         }
@@ -123,6 +145,9 @@ fun OrbitFSRoot(
                         },
                         onDeleteHost = { id ->
                             viewModel.deleteHost(id)
+                        },
+                        onEditHost = { host ->
+                            editingHost = host
                         },
                         onAddHost = { showAddHostDialog = true }
                     )
@@ -159,7 +184,7 @@ fun OrbitFSRoot(
     }
 
     if (showAddHostDialog) {
-        AddHostDialog(
+        AddEditHostDialog(
             showDialog = showAddHostDialog,
             onDismissRequest = { showAddHostDialog = false },
             onConfirm = { name, host, port ->
@@ -168,6 +193,43 @@ fun OrbitFSRoot(
             }
         )
     }
+
+    if (editingHost != null) {
+        val hostToEdit = editingHost!!
+        AddEditHostDialog(
+            showDialog = true,
+            initialName = hostToEdit.name,
+            initialHost = hostToEdit.host,
+            initialPort = hostToEdit.port.toString(),
+            onDismissRequest = { editingHost = null },
+            onConfirm = { name, host, port ->
+                viewModel.updateHost(hostToEdit.id, name, host, port)
+                editingHost = null
+            }
+        )
+    }
+
+    if (showMenu) {
+        DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("Refresh") },
+                onClick = {
+                    showMenu = false
+                    viewModel.refreshCurrentPath()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Disconnect") },
+                onClick = {
+                    showMenu = false
+                    viewModel.disconnect()
+                }
+            )
+        }
+    }
 }
 
 @Composable
@@ -175,6 +237,7 @@ fun HostListContent(
     hosts: List<SavedHost>,
     onHostClick: (SavedHost) -> Unit,
     onDeleteHost: (String) -> Unit,
+    onEditHost: (SavedHost) -> Unit,
     onAddHost: () -> Unit
 ) {
     if (hosts.isEmpty()) {
@@ -201,7 +264,8 @@ fun HostListContent(
                 HostCard(
                     host = host,
                     onClick = { onHostClick(host) },
-                    onDelete = { onDeleteHost(host.id) }
+                    onDelete = { onDeleteHost(host.id) },
+                    onEdit = { onEditHost(host) }
                 )
             }
         }
@@ -212,7 +276,8 @@ fun HostListContent(
 fun HostCard(
     host: SavedHost,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onEdit: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -227,7 +292,7 @@ fun HostCard(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
+             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -239,6 +304,13 @@ fun HostCard(
                     text = "${host.host}:${host.port}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = onEdit) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "Edit host",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             IconButton(onClick = onDelete) {
@@ -253,19 +325,22 @@ fun HostCard(
 }
 
 @Composable
-fun AddHostDialog(
+fun AddEditHostDialog(
     showDialog: Boolean,
+    initialName: String = "",
+    initialHost: String = "",
+    initialPort: String = "9090",
     onDismissRequest: () -> Unit,
     onConfirm: (name: String, host: String, port: Int) -> Unit
 ) {
     if (showDialog) {
-        var nameText by rememberSaveable { mutableStateOf("") }
-        var hostText by rememberSaveable { mutableStateOf("") }
-        var portText by rememberSaveable { mutableStateOf("9090") }
+        var nameText by rememberSaveable { mutableStateOf(initialName) }
+        var hostText by rememberSaveable { mutableStateOf(initialHost) }
+        var portText by rememberSaveable { mutableStateOf(initialPort) }
 
         AlertDialog(
             onDismissRequest = onDismissRequest,
-            title = { Text("Add Host") },
+            title = { Text(if (initialName.isNotEmpty()) "Edit Host" else "Add Host") },
             text = {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -299,7 +374,7 @@ fun AddHostDialog(
                         }
                     }
                 ) {
-                    Text("Add")
+                    Text(if (initialName.isNotEmpty()) "Save" else "Add")
                 }
             },
             dismissButton = {
