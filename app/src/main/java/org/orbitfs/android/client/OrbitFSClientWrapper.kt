@@ -96,7 +96,7 @@ class OrbitFSClientWrapper(
         try {
             val entries = requireClient().list(handle)
             entries.map { entry ->
-                val fullPath = if (path.endsWith("/")) "$path$entry" else "$path/$entry"
+                val fullPath = if (path.isEmpty()) entry else if (path.endsWith("/")) "$path$entry" else "$path/$entry"
                 var statResult: org.orbitfs.common.model.FileStat? = null
                 try {
                     val entryHandle = openHandle(fullPath)
