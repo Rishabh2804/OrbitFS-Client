@@ -69,13 +69,15 @@ class OrbitFSClientWrapper(
     val isConnected: Boolean
         get() = isOpen
 
-    suspend fun stat(path: String): FileInfo {
+    suspend fun ensureConnected() = withContext(Dispatchers.IO) {
+        val c = cachingClient ?: throw IOException("Not connected")
+    }
+
+    suspend fun stat(path: String): FileInfo = withContext(Dispatchers.IO) {
         val handle = openHandle(path)
         try {
-            val stat = withContext(Dispatchers.IO) {
-                requireClient().stat(handle)
-            }
-            return FileInfo(
+            val stat = requireClient().stat(handle)
+            FileInfo(
                 name = path.substringAfterLast("/"),
                 path = path,
                 size = stat.size(),
@@ -122,12 +124,10 @@ class OrbitFSClientWrapper(
         }
     }
 
-    suspend fun read(path: String, offset: Long, count: Int): ByteArray {
+    suspend fun read(path: String, offset: Long, count: Int): ByteArray = withContext(Dispatchers.IO) {
         val handle = openHandle(path)
         try {
-            return withContext(Dispatchers.IO) {
-                requireClient().read(handle, offset, count)
-            }
+            requireClient().read(handle, offset, count)
         } catch (e: Exception) {
             throw IOException("read failed: ${e.message}", e)
         } finally {
@@ -140,12 +140,10 @@ class OrbitFSClientWrapper(
         return read(path, offset, chunkSize)
     }
 
-    suspend fun write(path: String, offset: Long, data: ByteArray): Int {
+    suspend fun write(path: String, offset: Long, data: ByteArray): Int = withContext(Dispatchers.IO) {
         val handle = openHandle(path)
         try {
-            return withContext(Dispatchers.IO) {
-                requireClient().write(handle, offset, data)
-            }
+            requireClient().write(handle, offset, data)
         } catch (e: Exception) {
             throw IOException("write failed: ${e.message}", e)
         } finally {

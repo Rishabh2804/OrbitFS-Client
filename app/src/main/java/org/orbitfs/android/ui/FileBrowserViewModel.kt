@@ -12,8 +12,8 @@ import org.orbitfs.android.data.ConnectionConfig
 import org.orbitfs.android.model.FileInfo
 import java.io.IOException
 
-data class BrowserState(
-    val currentPath: String = "/",
+    data class BrowserState(
+    val currentPath: String = "",
     val files: List<FileInfo> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
@@ -104,8 +104,8 @@ class FileBrowserViewModel(
 }
 
 fun computeParentPath(current: String): String {
-    if (current == "/" || current.isEmpty()) return "/"
+    if (current.isEmpty() || current == "/") return ""
     val trimmed = current.removeSuffix("/")
     val lastSlash = trimmed.lastIndexOf("/")
-    return if (lastSlash <= 0) "/" else trimmed.substring(0, lastSlash)
+    return if (lastSlash <= 0) "" else trimmed.substring(0, lastSlash)
 }
