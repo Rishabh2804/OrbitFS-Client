@@ -215,6 +215,11 @@ fun FileListContent(
                     )
                 }
             }
+            PullToRefreshDefaults.Indicator(
+                state = pullToRefreshState,
+                isRefreshing = isLoading,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
     }
 }

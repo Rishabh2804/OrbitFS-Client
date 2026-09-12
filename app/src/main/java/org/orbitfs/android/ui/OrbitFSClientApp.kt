@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +24,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Warning
@@ -33,6 +36,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,6 +65,8 @@ import org.orbitfs.android.data.ConnectionConfig
 import org.orbitfs.android.data.HostRepository
 import org.orbitfs.android.data.SavedHost
 import org.orbitfs.android.model.DownloadStatus
+import org.orbitfs.android.model.FileDownloadState
+import org.orbitfs.android.model.FileInfo
 import org.orbitfs.android.util.MimeTypeUtil
 import org.orbitfs.android.util.debouncedClick
 
@@ -84,6 +90,7 @@ fun OrbitFSRoot(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showDirInfoDialog by remember { mutableStateOf(false) }
     var showSelectedInfoDialog by remember { mutableStateOf(false) }
+    var showDownloadsDialog by remember { mutableStateOf(false) }
     var filesToDelete by remember { mutableStateOf<List<String>>(emptyList()) }
     val context = LocalContext.current
 
@@ -220,9 +227,18 @@ fun OrbitFSRoot(
                                         imageVector = Icons.Default.ArrowBack,
                                         contentDescription = "Go back",
                                         tint = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                }
-                            }
+            )
+        }
+
+        if (showDownloadsDialog) {
+            DownloadsDialog(
+                showDialog = showDownloadsDialog,
+                onDismissRequest = { showDownloadsDialog = false },
+                downloadStates = downloadStates,
+                onCancelDownload = { path -> viewModel.cancelDownload(path) }
+            )
+        }
+    }
                         },
                         actions = {
                             if (isHostView) {
@@ -255,19 +271,14 @@ fun OrbitFSRoot(
                                     }
                                 }
                             } else {
-                                if (downloadStates.isNotEmpty()) {
-                                    val activeDownload = downloadStates.values.find { it.status == DownloadStatus.IN_PROGRESS }
-                                    if (activeDownload != null) {
-                                        IconButton(onClick = { }) {
-                                            CircularProgressIndicator(
-                                                progress = { activeDownload.progressFraction },
-                                                modifier = Modifier.size(24.dp),
-                                                strokeWidth = 2.dp,
-                                                color = MaterialTheme.colorScheme.onPrimary,
-                                                trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.3f)
-                                            )
-                                        }
-                                    }
+                                IconButton(
+                                    onClick = { showDirInfoDialog = true }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = "Directory Info",
+                                        tint = MaterialTheme.colorScheme.onPrimary
+                                    )
                                 }
                                 Box {
                                     IconButton(onClick = { showMenu = true }) {
@@ -277,47 +288,81 @@ fun OrbitFSRoot(
                                             tint = MaterialTheme.colorScheme.onPrimary
                                         )
                                     }
-                                DropdownMenu(
-                                    expanded = showMenu,
-                                    onDismissRequest = { showMenu = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("Refresh") },
-                                        onClick = {
-                                            showMenu = false
-                                            viewModel.refreshCurrentPath()
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Directory Info") },
-                                        onClick = {
-                                            showMenu = false
-                                            showDirInfoDialog = true
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Text("Show Hidden Files")
-                                                Checkbox(
-                                                    checked = browserState.showHiddenFiles,
-                                                    onCheckedChange = { viewModel.toggleHiddenFiles() }
-                                                )
+                                    DropdownMenu(
+                                        expanded = showMenu,
+                                        onDismissRequest = { showMenu = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Save to Downloads") },
+                                            onClick = {
+                                                showMenu = false
+                                                viewModel.saveSelectedToDownloads(context)
+                                            },
+                                            enabled = !browserState.isMultiSelect || browserState.selectedPaths.any { path ->
+                                                !(browserState.files.find { it.path == path }?.isDirectory ?: true)
                                             }
-                                        },
-                                        onClick = { }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Close") },
-                                        onClick = {
-                                            showMenu = false
-                                            viewModel.disconnect()
-                                        }
-                                    )
-                                }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Download") },
+                                            onClick = {
+                                                showMenu = false
+                                                viewModel.downloadSelectedFiles(context)
+                                            },
+                                            enabled = !browserState.isMultiSelect || browserState.selectedPaths.any { path ->
+                                                !(browserState.files.find { it.path == path }?.isDirectory ?: true)
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Info") },
+                                            onClick = {
+                                                showMenu = false
+                                                showSelectedInfoDialog = true
+                                            },
+                                            enabled = browserState.isMultiSelect && browserState.selectedPaths.isNotEmpty()
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Copy Path") },
+                                            onClick = {
+                                                showMenu = false
+                                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                val normalizedPaths = browserState.selectedPaths.joinToString("\n") { path ->
+                                                    if (path.startsWith("/")) path else "/$path"
+                                                }
+                                                val clip = android.content.ClipData.newPlainText("paths", normalizedPaths)
+                                                clipboard.setPrimaryClip(clip)
+                                                viewModel.clearSelection()
+                                            },
+                                            enabled = browserState.isMultiSelect && browserState.selectedPaths.isNotEmpty()
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Show Hidden Files") },
+                                            onClick = {
+                                                showMenu = false
+                                                viewModel.toggleHiddenFiles()
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Downloads") },
+                                            onClick = {
+                                                showMenu = false
+                                                showDownloadsDialog = true
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Refresh") },
+                                            onClick = {
+                                                showMenu = false
+                                                viewModel.refreshCurrentPath()
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Close") },
+                                            onClick = {
+                                                showMenu = false
+                                                viewModel.disconnect()
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         },
@@ -481,11 +526,15 @@ fun OrbitFSRoot(
                     val totalFiles = browserState.files.count { !it.isDirectory }
                     val totalDirs = browserState.files.count { it.isDirectory }
                     val totalSize = browserState.files.filter { !it.isDirectory }.sumOf { it.size }
+                    val largestFile = browserState.files.filter { !it.isDirectory }.maxByOrNull { it.size }
                     Column {
-                        Text("Path: ${if (currentPath.isEmpty()) "/" else currentPath}")
-                        Text("Directories: $totalDirs")
-                        Text("Files: $totalFiles")
-                        Text("Total size: ${MimeTypeUtil.formatFileSize(totalSize)}")
+                        Text("Path: ${if (currentPath.isEmpty()) "/" else currentPath}", style = MaterialTheme.typography.bodyMedium)
+                        Text("Directories: $totalDirs", style = MaterialTheme.typography.bodySmall)
+                        Text("Files: $totalFiles", style = MaterialTheme.typography.bodySmall)
+                        Text("Total size: ${MimeTypeUtil.formatFileSize(totalSize)}", style = MaterialTheme.typography.bodySmall)
+                        largestFile?.let {
+                            Text("Largest: ${it.displayName} (${MimeTypeUtil.formatFileSize(it.size)})", style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 },
                 confirmButton = {
@@ -503,13 +552,20 @@ fun OrbitFSRoot(
                 title = { Text("Selected Items Info") },
                 text = {
                     val totalSize = selectedFiles.filter { !it.isDirectory }.sumOf { it.size }
+                    val dirsCount = selectedFiles.count { it.isDirectory }
+                    val filesCount = selectedFiles.count { !it.isDirectory }
                     Column {
-                        Text("Selected: ${selectedFiles.size}")
-                        Text("Total size: ${MimeTypeUtil.formatFileSize(totalSize)}")
+                        Text("Selected: ${selectedFiles.size} items", style = MaterialTheme.typography.bodyMedium)
+                        Text("Directories: $dirsCount", style = MaterialTheme.typography.bodySmall)
+                        Text("Files: $filesCount", style = MaterialTheme.typography.bodySmall)
+                        Text("Total size: ${MimeTypeUtil.formatFileSize(totalSize)}", style = MaterialTheme.typography.bodySmall)
                         selectedFiles.take(5).forEach { f ->
-                            Text("${f.displayName} - ${MimeTypeUtil.formatFileSize(f.size)}", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "${f.displayName} - ${if (f.isDirectory) "dir" else MimeTypeUtil.formatFileSize(f.size)}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
-                        if (selectedFiles.size > 5) Text("... and ${selectedFiles.size - 5} more")
+                        if (selectedFiles.size > 5) Text("... and ${selectedFiles.size - 5} more", style = MaterialTheme.typography.bodySmall)
                     }
                 },
                 confirmButton = {
@@ -519,7 +575,90 @@ fun OrbitFSRoot(
                 }
             )
         }
+}
+
+@Composable
+fun DownloadsDialog(
+    showDialog: Boolean,
+    onDismissRequest: () -> Unit,
+    downloadStates: Map<String, FileDownloadState>,
+    onCancelDownload: (String) -> Unit
+) {
+    val inProgress = downloadStates.values.filter { it.status == DownloadStatus.IN_PROGRESS }
+    val completed = downloadStates.values.filter { it.status == DownloadStatus.COMPLETE }
+    val failed = downloadStates.values.filter { it.status == DownloadStatus.FAILED }
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text("Downloads") },
+        text = {
+            if (downloadStates.isEmpty()) {
+                Text("No active downloads")
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 300.dp)
+                ) {
+                    if (completed.isNotEmpty()) {
+                        Text("Completed (${completed.size})", style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.size(4.dp))
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(inProgress, key = { it.path }) { state ->
+                            DownloadItem(state = state, onCancel = { onCancelDownload(state.path) })
+                        }
+                        items(completed, key = { it.path }) { state ->
+                            DownloadItem(state = state, onCancel = {})
+                        }
+                        items(failed, key = { it.path }) { state ->
+                            DownloadItem(state = state, onCancel = { onCancelDownload(state.path) })
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text("OK")
+            }
+        }
+    )
+}
+
+@Composable
+fun DownloadItem(
+    state: FileDownloadState,
+    onCancel: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(state.fileName, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "${MimeTypeUtil.formatFileSize(state.bytesDownloaded)} / ${MimeTypeUtil.formatFileSize(state.totalBytes)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        when (state.status) {
+            DownloadStatus.IN_PROGRESS -> {
+                LinearProgressIndicator(
+                    progress = { state.progressFraction },
+                    modifier = Modifier.size(20.dp),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            else -> {}
+        }
     }
+}
 
 @Composable
 fun HostListContent(

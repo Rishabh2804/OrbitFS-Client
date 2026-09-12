@@ -82,7 +82,42 @@ class FileBrowserViewModel(
     fun toggleHiddenFiles() {
         val newShowHidden = !settingsRepository.showHiddenFiles.value
         settingsRepository.setShowHiddenFiles(newShowHidden)
-        loadFiles(_state.value.currentPath, newShowHidden)
+        _state.update { it.copy(showHiddenFiles = newShowHidden, isLoading = true) }
+        viewModelScope.launch {
+            try {
+                val client = connectionManager.getClient()
+                val files = client.withRetry { client.list(_state.value.currentPath, newShowHidden) }
+                _state.update {
+                    it.copy(
+                        files = files,
+                        isLoading = false,
+                        showHiddenFiles = newShowHidden
+                    )
+                }
+                val thresholdBytes = settingsRepository.autoLoadThresholdKb.value * 1024L
+                files.filter { !it.isDirectory && it.size <= thresholdBytes }.forEach { f ->
+                    viewModelScope.launch {
+                        try {
+                            val cached = fileCache.get(f.path)
+                            if (cached == null || cached.isEmpty()) {
+                                val data = downloadQuiet(f)
+                                fileCache.put(f.path, data)
+                            }
+                        } catch (e: Exception) {
+                            Timber.w(e, "Auto-download failed for hidden file: ${f.path}")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        showHiddenFiles = newShowHidden,
+                        error = e.message ?: "Failed to toggle hidden files"
+                    )
+                }
+            }
+        }
     }
 
     fun showSettings() {
@@ -358,6 +393,19 @@ class FileBrowserViewModel(
     }
 
     fun downloadSelectedFiles(ctx: Context) {
+        val selected = _state.value.selectedPaths.toList()
+        val filesMap = _state.value.files.associateBy { it.path }
+        selected.forEach { path ->
+            filesMap[path]?.let { fileInfo ->
+                if (!fileInfo.isDirectory) {
+                    downloadFile(fileInfo, ctx)
+                }
+            }
+        }
+        clearSelection()
+    }
+
+    fun saveSelectedToDownloads(ctx: Context) {
         val selected = _state.value.selectedPaths.toList()
         val filesMap = _state.value.files.associateBy { it.path }
         selected.forEach { path ->
