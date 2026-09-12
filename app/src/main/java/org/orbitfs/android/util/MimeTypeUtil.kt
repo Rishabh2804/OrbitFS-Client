@@ -75,4 +75,10 @@ object MimeTypeUtil {
             else -> "%.1f GB".format(size / (1024.0 * 1024.0 * 1024.0))
         }
     }
+
+    fun formatDate(timestamp: Long): String {
+        if (timestamp <= 0) return "Unknown"
+        val sdf = java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.getDefault())
+        return sdf.format(java.util.Date(timestamp * 1000))
+    }
 }

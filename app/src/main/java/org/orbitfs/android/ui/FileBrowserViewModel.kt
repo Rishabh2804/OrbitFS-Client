@@ -48,8 +48,16 @@ class FileBrowserViewModel(
     private val _downloadStates = MutableStateFlow<Map<String, FileDownloadState>>(emptyMap())
     val downloadStates: StateFlow<Map<String, FileDownloadState>> = _downloadStates
 
+    private val _pingResults = MutableStateFlow<Map<String, Int?>>(emptyMap())
+    val pingResults: StateFlow<Map<String, Int?>> = _pingResults
+
     val currentPath: String
         get() = _state.value.currentPath
+
+    private fun getServerAddress(): String {
+        val config = connectionManager.currentConfig
+        return "${config.host}:${config.port}"
+    }
 
     private val notifManager: NotificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -67,17 +75,51 @@ class FileBrowserViewModel(
                 _state.update { it.copy(showHiddenFiles = showHidden) }
             }
         }
+        startPingMonitor()
+    }
+
+    private fun startPingMonitor() {
+        viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                val currentHosts = hostRepository.hosts.value
+                currentHosts.forEach { host ->
+                    launch {
+                        val ping = tryPing(host.host, host.port)
+                        _pingResults.update { it + (host.id to ping) }
+                    }
+                }
+                kotlinx.coroutines.delay(10_000)
+            }
+        }
+    }
+
+    private suspend fun tryPing(host: String, port: Int): Int? = withContext(Dispatchers.IO) {
+        try {
+            val start = System.currentTimeMillis()
+            val socket = java.net.Socket()
+            socket.connect(java.net.InetSocketAddress(host, port), 2000)
+            socket.close()
+            (System.currentTimeMillis() - start).toInt()
+        } catch (e: Exception) {
+            null
+        }
     }
 
     fun refreshCurrentPath() {
+        _isRefreshing = true
         loadFiles(_state.value.currentPath, _state.value.showHiddenFiles)
     }
 
     val isMultiSelect: Boolean
         get() = _state.value.isMultiSelect
 
+    private var _isRefreshing = false
+
     val showHiddenFiles: Boolean
         get() = _state.value.showHiddenFiles
+
+    val isRefreshing: Boolean
+        get() = _isRefreshing
 
     fun toggleHiddenFiles() {
         val newShowHidden = !settingsRepository.showHiddenFiles.value
@@ -102,9 +144,30 @@ class FileBrowserViewModel(
                             if (cached == null || cached.isEmpty()) {
                                 val data = downloadQuiet(f)
                                 fileCache.put(f.path, data)
+                                _downloadStates.update { current ->
+                                    current + (f.path to FileDownloadState(
+                                        path = f.path,
+                                        fileName = f.name,
+                                        bytesDownloaded = data.size.toLong(),
+                                        totalBytes = f.size,
+                                        status = DownloadStatus.COMPLETE,
+                                        serverAddress = getServerAddress(),
+                                        savedToPath = context.cacheDir.path
+                                    ))
+                                }
                             }
                         } catch (e: Exception) {
-                            Timber.w(e, "Auto-download failed for hidden file: ${f.path}")
+                            _downloadStates.update { current ->
+                                current + (f.path to FileDownloadState(
+                                    path = f.path,
+                                    fileName = f.name,
+                                    bytesDownloaded = 0L,
+                                    totalBytes = f.size,
+                                    status = DownloadStatus.FAILED,
+                                    serverAddress = getServerAddress(),
+                                    errorMessage = e.message ?: "Auto-load failed"
+                                ))
+                            }
                         }
                     }
                 }
@@ -116,6 +179,7 @@ class FileBrowserViewModel(
                         error = e.message ?: "Failed to toggle hidden files"
                     )
                 }
+                _isRefreshing = false
             }
         }
     }
@@ -155,6 +219,7 @@ class FileBrowserViewModel(
                         error = null
                     )
                 }
+                _isRefreshing = false
                 val thresholdBytes = settingsRepository.autoLoadThresholdKb.value * 1024L
                 files.filter { !it.isDirectory && it.size <= thresholdBytes }.forEach { f ->
                     viewModelScope.launch {
@@ -169,7 +234,9 @@ class FileBrowserViewModel(
                                         fileName = f.name,
                                         bytesDownloaded = data.size.toLong(),
                                         totalBytes = f.size,
-                                        status = DownloadStatus.COMPLETE
+                                        status = DownloadStatus.COMPLETE,
+                                        serverAddress = getServerAddress(),
+                                        savedToPath = context.cacheDir.path
                                     ))
                                 }
                             }
@@ -180,7 +247,9 @@ class FileBrowserViewModel(
                                     fileName = f.name,
                                     bytesDownloaded = 0L,
                                     totalBytes = f.size,
-                                    status = DownloadStatus.FAILED
+                                    status = DownloadStatus.FAILED,
+                                    serverAddress = getServerAddress(),
+                                    errorMessage = e.message ?: "Auto-load failed"
                                 ))
                             }
                         }
@@ -256,7 +325,7 @@ class FileBrowserViewModel(
 
         viewModelScope.launch {
             try {
-                val data = downloadWithProgress(fileInfo)
+                val data = downloadWithProgress(fileInfo, getServerAddress())
                 fileCache.put(fileInfo.path, data)
 
                 saveToDownloads(ctx, fileInfo.name, data)
@@ -315,16 +384,28 @@ class FileBrowserViewModel(
         }
     }
 
+    suspend fun statFile(path: String): FileInfo {
+        val client = connectionManager.getClient()
+        return client.stat(path)
+    }
+
     private suspend fun downloadQuiet(fileInfo: FileInfo): ByteArray {
         val client = connectionManager.getClient()
         return client.readFile(fileInfo.path)
     }
 
-    private suspend fun downloadWithProgress(fileInfo: FileInfo): ByteArray {
+    private suspend fun downloadWithProgress(fileInfo: FileInfo, serverAddress: String = ""): ByteArray {
         Timber.d("downloadWithProgress: starting for ${fileInfo.path} (size=${fileInfo.size})")
         val client = connectionManager.getClient()
+        var lastBytes = 0L
+        var lastTime = System.currentTimeMillis()
         return client.withRetry {
             client.readFile(fileInfo.path) { bytesRead, totalSize ->
+                val now = System.currentTimeMillis()
+                val elapsed = now - lastTime
+                val speed = if (elapsed > 0) ((bytesRead - lastBytes) * 1000L / elapsed) else 0L
+                lastBytes = bytesRead
+                lastTime = now
                 val progress = if (totalSize > 0) bytesRead.toFloat() / totalSize else 0f
                 _downloadStates.update { current ->
                     current + (fileInfo.path to FileDownloadState(
@@ -332,7 +413,9 @@ class FileBrowserViewModel(
                         fileName = fileInfo.name,
                         bytesDownloaded = bytesRead,
                         totalBytes = totalSize,
-                        status = if (bytesRead >= totalSize) DownloadStatus.COMPLETE else DownloadStatus.IN_PROGRESS
+                        status = if (bytesRead >= totalSize) DownloadStatus.COMPLETE else DownloadStatus.IN_PROGRESS,
+                        serverAddress = serverAddress,
+                        speedBytesPerSecond = speed
                     ))
                 }
                 updateNotification(fileInfo.name, bytesRead, totalSize)
@@ -345,16 +428,49 @@ class FileBrowserViewModel(
                     fileName = fileInfo.name,
                     bytesDownloaded = it.size.toLong(),
                     totalBytes = it.size.toLong(),
-                    status = DownloadStatus.COMPLETE
+                    status = DownloadStatus.COMPLETE,
+                    serverAddress = serverAddress
                 ))
             }
         }
     }
 
-    private suspend fun downloadAndCache(fileInfo: FileInfo): ByteArray {
-        val data = downloadWithProgress(fileInfo)
+     private suspend fun downloadAndCache(fileInfo: FileInfo): ByteArray {
+        val data = downloadWithProgress(fileInfo, getServerAddress())
         fileCache.put(fileInfo.path, data)
         return data
+    }
+
+    fun shareFile(fileInfo: FileInfo, ctx: Context) {
+        if (fileInfo.isDirectory) return
+        createNotificationChannel()
+        viewModelScope.launch {
+            try {
+                val cached = fileCache.get(fileInfo.path)
+                val data = cached ?: downloadQuiet(fileInfo)
+                val tmpFile = File(ctx.cacheDir, "orbitfs_share").resolve(fileInfo.name.replace("/", "_").replace(" ", "_"))
+                tmpFile.parentFile?.mkdirs()
+                tmpFile.writeBytes(data)
+                withContext(Dispatchers.Main) {
+                    val uri = FileProvider.getUriForFile(
+                        ctx,
+                        "${ctx.packageName}.fileprovider",
+                        tmpFile
+                    )
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = fileInfo.mimeType.ifEmpty { "application/octet-stream" }
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    ctx.startActivity(Intent.createChooser(intent, "Share ${fileInfo.name}"))
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "shareFile failed for ${fileInfo.path}")
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(ctx, "Share failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     fun toggleMultiSelect() {
@@ -416,6 +532,50 @@ class FileBrowserViewModel(
             }
         }
         clearSelection()
+    }
+
+    fun saveToDownloadsWithDestination(uri: android.net.Uri, fileInfo: FileInfo, ctx: Context, data: ByteArray? = null) {
+        createNotificationChannel()
+        viewModelScope.launch {
+            try {
+                val fileData = data ?: downloadWithProgress(fileInfo, getServerAddress())
+                fileCache.put(fileInfo.path, fileData)
+                withContext(Dispatchers.IO) {
+                    ctx.contentResolver.openOutputStream(uri)?.use { it.write(fileData) }
+                }
+                _downloadStates.update { current ->
+                    current + (fileInfo.path to FileDownloadState(
+                        path = fileInfo.path,
+                        fileName = fileInfo.name,
+                        bytesDownloaded = fileData.size.toLong(),
+                        totalBytes = fileData.size.toLong(),
+                        status = DownloadStatus.COMPLETE,
+                        serverAddress = getServerAddress(),
+                        savedToPath = uri.toString()
+                    ))
+                }
+                updateNotificationComplete(fileInfo.name)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(ctx, "Saved ${fileInfo.name}", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                failNotification(fileInfo.name, e.message ?: "Save failed")
+                _downloadStates.update { current ->
+                    current + (fileInfo.path to FileDownloadState(
+                        path = fileInfo.path,
+                        fileName = fileInfo.name,
+                        bytesDownloaded = 0L,
+                        totalBytes = fileInfo.size,
+                        status = DownloadStatus.FAILED,
+                        serverAddress = getServerAddress(),
+                        errorMessage = e.message ?: "Save failed"
+                    ))
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(ctx, "Save failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     fun deleteSelectedFiles() {

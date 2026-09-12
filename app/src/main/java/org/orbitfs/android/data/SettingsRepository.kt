@@ -33,7 +33,7 @@ class SettingsRepository(context: Context) {
     }
 
     companion object {
-        const val DEFAULT_THRESHOLD_KB = 100
+        const val DEFAULT_THRESHOLD_KB = 512
         private const val KEY_AUTO_LOAD_THRESHOLD = "auto_load_threshold_kb"
         private const val KEY_SHOW_HIDDEN = "show_hidden_files"
     }

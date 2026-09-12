@@ -67,6 +67,7 @@ dependencies {
     implementation(files("libs/orbitfs-core-0.1.0.jar"))
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("org.mockito:mockito-core:5.14.2")
 

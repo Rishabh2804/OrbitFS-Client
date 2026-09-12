@@ -81,7 +81,12 @@ class OrbitFSClientWrapper(
                 path = path,
                 size = stat.size(),
                 isDirectory = stat.isDirectory(),
-                lastModified = stat.lastModifiedMillis()
+                lastModified = stat.lastModifiedMillis(),
+                created = stat.createdMillis(),
+                extension = stat.extension() ?: "",
+                mimeType = stat.mimeType() ?: "",
+                permissions = stat.permissions() ?: "",
+                owner = stat.owner() ?: ""
             )
         } catch (e: Exception) {
             throw IOException("stat failed: ${e.message}", e)
@@ -101,7 +106,11 @@ class OrbitFSClientWrapper(
                     path = fullPath,
                     size = entry.size(),
                     isDirectory = entry.isDir(),
-                    lastModified = 0L
+                    lastModified = entry.lastModified(),
+                    extension = entry.extension() ?: "",
+                    mimeType = entry.mimeType() ?: "",
+                    permissions = entry.permissions() ?: "",
+                    owner = entry.owner() ?: ""
                 )
             }
         } catch (e: Exception) {

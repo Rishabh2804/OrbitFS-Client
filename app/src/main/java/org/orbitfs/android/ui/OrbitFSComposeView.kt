@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.PendingActions
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
@@ -162,10 +163,10 @@ fun FileListContent(
             modifier = Modifier
                 .fillMaxSize()
                 .pullToRefresh(
-                    isRefreshing = isLoading,
+                    isRefreshing = false,
                     state = pullToRefreshState,
                     onRefresh = onRefresh,
-                    enabled = !isMultiSelect
+                    enabled = !isMultiSelect && !isLoading
                 )
         ) {
             LazyColumn(
@@ -215,11 +216,6 @@ fun FileListContent(
                     )
                 }
             }
-            PullToRefreshDefaults.Indicator(
-                state = pullToRefreshState,
-                isRefreshing = isLoading,
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
         }
     }
 }
@@ -274,7 +270,7 @@ fun FileRow(
             }
 
             Icon(
-                imageVector = if (file.isDirectory) Icons.Default.Folder else Icons.Default.Folder,
+                imageVector = if (file.isDirectory) Icons.Default.Folder else Icons.Default.InsertDriveFile,
                 contentDescription = null,
                 tint = if (file.isDirectory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(24.dp)
