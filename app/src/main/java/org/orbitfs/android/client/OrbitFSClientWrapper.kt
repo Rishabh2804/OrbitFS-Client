@@ -1,6 +1,5 @@
 package org.orbitfs.android.client
 
-import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -10,17 +9,17 @@ import org.orbitfs.client.CachingOrbitFSClient
 import org.orbitfs.client.NetworkTransportClient
 import org.orbitfs.client.OrbitFSClient as JavaOrbitFSClient
 import org.orbitfs.android.model.FileInfo
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-
-private const val TAG = "OrbitFSClientWrapper"
+import timber.log.Timber
 
 class OrbitFSClientWrapper(
     private val host: String,
     private val port: Int,
     private val timeoutMs: Long = 10_000L,
-    private val chunkSize: Int = 64 * 1024
+    private val chunkSize: Int = 256 * 1024
 ) {
 
     private var transport: NetworkTransportClient? = null
@@ -42,10 +41,10 @@ class OrbitFSClientWrapper(
                 transport = t
                 isOpen = true
 
-                Log.d(TAG, "Connected to $host:$port")
+                Timber.d("Connected to $host:$port")
                 Result.success(Unit)
             } catch (e: Exception) {
-                Log.e(TAG, "Connect failed", e)
+                Timber.e(e, "Connect failed")
                 Result.failure(IOException("Failed to connect to $host:$port: ${e.message}", e))
             }
         }
@@ -57,7 +56,7 @@ class OrbitFSClientWrapper(
                 cachingClient?.close()
                 transport?.close()
             } catch (e: Exception) {
-                Log.w(TAG, "Error during disconnect", e)
+                Timber.w(e, "Error during disconnect")
             } finally {
                 isOpen = false
                 cachingClient = null
@@ -91,10 +90,10 @@ class OrbitFSClientWrapper(
         }
     }
 
-    suspend fun list(path: String): List<FileInfo> = withContext(Dispatchers.IO) {
+    suspend fun list(path: String, showHidden: Boolean = false): List<FileInfo> = withContext(Dispatchers.IO) {
         val handle = openHandle(path)
         try {
-            val entries = requireClient().listWithStat(handle)
+            val entries = requireClient().listWithStat(handle, showHidden)
             entries.map { entry ->
                 val fullPath = if (path.isEmpty()) entry.name() else if (path.endsWith("/")) "$path${entry.name()}" else "$path/${entry.name()}"
                 FileInfo(
@@ -106,7 +105,7 @@ class OrbitFSClientWrapper(
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "list failed for $path", e)
+            Timber.e(e, "list failed for $path")
             throw IOException("list failed: ${e.message}", e)
         } finally {
             closeHandle(handle)
@@ -140,21 +139,40 @@ class OrbitFSClientWrapper(
         }
     }
 
-    suspend fun readFile(path: String): ByteArray = withContext(Dispatchers.IO) {
-        Log.d(TAG, "readFile: path='$path'")
+    suspend fun readFile(path: String, onProgress: ((bytesRead: Long, totalSize: Long) -> Unit)? = null): ByteArray = withContext(Dispatchers.IO) {
+        Timber.d("readFile: path='$path'")
         val handle = openHandle(path)
-        Log.d(TAG, "readFile: handle=$handle")
+        Timber.d("readFile: handle=$handle")
         try {
             val stat = requireClient().stat(handle)
-            Log.d(TAG, "readFile: stat size=${stat.size()}, isDir=${stat.isDirectory()}")
+            Timber.d("readFile: stat size=${stat.size()}, isDir=${stat.isDirectory()}")
             if (stat.isDirectory()) {
                 throw IOException("Cannot read a directory: $path")
             }
-            val data = requireClient().read(handle, 0, stat.size().toInt())
-            Log.d(TAG, "readFile: read ${data.size} bytes")
-            data
+            val fileSize = stat.size().toLong()
+            if (fileSize == 0L) {
+                Timber.d("readFile: zero-byte file")
+                return@withContext byteArrayOf()
+            }
+            val result = ByteArrayOutputStream()
+            var offset = 0L
+            while (offset < fileSize) {
+                val count = minOf(chunkSize.toLong(), fileSize - offset).toInt()
+                Timber.d("readFile: requesting read at offset=$offset count=$count")
+                val chunk = requireClient().read(handle, offset, count)
+                Timber.d("readFile: got ${chunk.size} bytes at offset=$offset")
+                if (chunk.isEmpty()) {
+                    Timber.w("readFile: empty chunk at offset=$offset, possible EOF reached")
+                    break
+                }
+                result.write(chunk)
+                offset += chunk.size
+                onProgress?.invoke(offset, fileSize)
+            }
+            Timber.d("readFile: read ${result.size()} bytes total for '$path'")
+            result.toByteArray()
         } catch (e: Exception) {
-            Log.e(TAG, "readFile failed for '$path'", e)
+            Timber.e(e, "readFile failed for '$path'")
             throw IOException("readFile failed: ${e.message}", e)
         } finally {
             closeHandle(handle)
@@ -174,7 +192,7 @@ class OrbitFSClientWrapper(
             val c = cachingClient ?: return
             c.close(handle)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to close handle", e)
+            Timber.w(e, "Failed to close handle")
         }
     }
 
@@ -201,10 +219,36 @@ class OrbitFSClientWrapper(
                 if (attempt == maxAttempts - 1) {
                     throw e
                 }
+                if (e is IOException && (e.message?.contains("Connection") == true || e.message?.contains("Broken") == true)) {
+                    Timber.w(e, "Connection broken, attempting reconnect")
+                    lock.withLock {
+                        try {
+                            cachingClient?.close()
+                            transport?.close()
+                        } catch (_: Exception) { }
+                        isOpen = false
+                        cachingClient = null
+                        transport = null
+                    }
+                    connect().getOrElse { 
+                        Timber.e(it, "Reconnect failed") 
+                        throw it
+                    }
+                }
                 kotlinx.coroutines.delay(currentDelay)
                 currentDelay = (currentDelay * factor).coerceAtMost(maxDelay)
             }
         }
         throw IllegalStateException("Unreachable: retry loop exhausted")
+    }
+
+    suspend fun delete(path: String) = withContext(Dispatchers.IO) {
+        val c = cachingClient ?: throw IOException("Not connected")
+        c.delete(path)
+    }
+
+    suspend fun rename(path: String, newPath: String) = withContext(Dispatchers.IO) {
+        val c = cachingClient ?: throw IOException("Not connected")
+        c.rename(path, newPath)
     }
 }

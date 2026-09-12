@@ -9,6 +9,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.lifecycle.lifecycleScope
 import org.orbitfs.android.client.ConnectionManager
 import org.orbitfs.android.data.HostRepository
+import org.orbitfs.android.data.SettingsRepository
 import org.orbitfs.android.ui.FileBrowserViewModel
 import org.orbitfs.android.ui.FileBrowserViewModelFactory
 import org.orbitfs.android.ui.OrbitFSRoot
@@ -30,19 +31,30 @@ class MainActivity : ComponentActivity() {
 
         hostRepository = HostRepository(File(filesDir, "hosts.json"))
         connectionManager = ConnectionManager(lifecycleScope)
-        val factory = FileBrowserViewModelFactory(connectionManager, hostRepository)
+        val settingsRepo = SettingsRepository(applicationContext)
+        val factory = FileBrowserViewModelFactory(
+            connectionManager,
+            hostRepository,
+            settingsRepo,
+            applicationContext
+        )
         viewModel = factory.create(FileBrowserViewModel::class.java)
 
         setContent {
             OrbitFSRoot(
                 connectionManager = connectionManager,
                 hostRepository = hostRepository,
-                viewModel = viewModel
+                viewModel = viewModel,
+                settingsRepository = settingsRepo
             )
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                if (viewModel.isMultiSelect) {
+                    viewModel.clearSelection()
+                    return
+                }
                 val currentPath = viewModel.currentPath
                 if (currentPath.isNotEmpty() && connectionManager.isConnected()) {
                     viewModel.navigateTo("..")

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.orbitfs.android.data.ConnectionConfig
+import org.orbitfs.android.model.BrowserState
 import org.orbitfs.android.model.FileInfo
 
 class BrowserStateTest {

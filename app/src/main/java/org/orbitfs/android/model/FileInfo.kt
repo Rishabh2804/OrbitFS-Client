@@ -7,5 +7,5 @@ data class FileInfo(
     val isDirectory: Boolean,
     val lastModified: Long
 ) {
-    val displayName: String get() = if (isDirectory) "$name/" else name
+    val displayName: String get() = name
 }

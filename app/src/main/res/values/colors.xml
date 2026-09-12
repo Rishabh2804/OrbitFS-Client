@@ -45,4 +45,6 @@
     <color name="md_theme_dark_inverseOnSurface">#e6e1e5</color>
     <color name="md_theme_dark_inverseOnSurfaceVariant">#79747e</color>
 
+    <color name="ic_launcher_background">#1E1035</color>
+
 </resources>
