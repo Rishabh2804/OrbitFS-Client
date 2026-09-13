@@ -12,6 +12,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.orbitfs.android.data.ConnectionConfig
 import org.orbitfs.android.data.SavedHost
+import org.orbitfs.android.data.SettingsRepository
 import java.io.IOException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -29,12 +30,16 @@ class ConnectionManager(
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected(ConnectionConfig()))
     val connectionState: StateFlow<ConnectionState> = _connectionState
 
+    private var _activeHostId: String? = null
+    val activeHostId: String? get() = _activeHostId
+
     val currentConfig: ConnectionConfig
         get() = connectionState.value.config
 
-    fun connect(config: ConnectionConfig) {
+    fun connect(config: ConnectionConfig, hostId: String? = null, timeoutMs: Long = 10_000, chunkSize: Int = 256 * 1024) {
         val oldClient = client
         client = null
+        _activeHostId = hostId
 
         _connectionState.update { ConnectionState.Connecting(config) }
 
@@ -50,7 +55,7 @@ class ConnectionManager(
             while (isActive && attempts < maxAttempts) {
                 attempts++
                 try {
-                    val wrapper = OrbitFSClientWrapper(config.host, config.port)
+                    val wrapper = OrbitFSClientWrapper(config.host, config.port, timeoutMs, chunkSize)
                     val result = wrapper.connect()
 
                     result.onSuccess {
@@ -140,7 +145,12 @@ class ConnectionManager(
     }
 
     fun connectToSavedHost(host: SavedHost) {
-        connect(ConnectionConfig(host.host, host.port, host.authToken))
+        connect(
+            config = ConnectionConfig(host.name, host.host, host.port, host.authToken), 
+            hostId = host.id,
+            timeoutMs = host.socketTimeoutMs.toLong(),
+            chunkSize = host.chunkSizeKb * 1024
+        )
     }
 }
 

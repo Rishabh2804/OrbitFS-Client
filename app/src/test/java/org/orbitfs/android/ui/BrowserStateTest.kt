@@ -16,7 +16,7 @@ class BrowserStateTest {
     }
 
     @Test
-    fun `FileInfo isDirectory displays with trailing slash`() {
+    fun `FileInfo isDirectory displayName has no trailing slash`() {
         val file = FileInfo(
             name = "documents",
             path = "documents",
@@ -24,7 +24,7 @@ class BrowserStateTest {
             isDirectory = true,
             lastModified = 0L
         )
-        assertEquals("documents/", file.displayName)
+        assertEquals("documents", file.displayName)
     }
 
     @Test

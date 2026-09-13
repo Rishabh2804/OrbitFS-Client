@@ -5,9 +5,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.History
@@ -21,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import org.orbitfs.android.model.FileDownloadState
 import org.orbitfs.android.model.DownloadStatus
 import org.orbitfs.android.ui.theme.*
@@ -35,10 +38,11 @@ fun TransfersScreen(
     onCancelTransfer: (String) -> Unit,
     onRetryTransfer: (FileDownloadState) -> Unit
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    
     val activeTransfers = downloadStates.filter { it.status == DownloadStatus.IN_PROGRESS || it.status == DownloadStatus.NOT_STARTED }
-    val historyTransfers = downloadStates.filter { it.status == DownloadStatus.COMPLETE || it.status == DownloadStatus.FAILED }
+    val historyTransfers = downloadStates.filter { it.status == DownloadStatus.COMPLETE || it.status == DownloadStatus.FAILED || it.status == DownloadStatus.CANCELLED }
+
+    val pagerState = rememberPagerState(pageCount = { 2 })
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -46,11 +50,11 @@ fun TransfersScreen(
                 title = { Text("Transfers", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    if (selectedTab == 1 && historyTransfers.isNotEmpty()) {
+                    if (pagerState.currentPage == 1 && historyTransfers.isNotEmpty()) {
                         TextButton(onClick = onClearHistory) {
                             Text("Clear History")
                         }
@@ -65,13 +69,13 @@ fun TransfersScreen(
                 .padding(padding)
         ) {
             PrimaryTabRow(
-                selectedTabIndex = selectedTab,
+                selectedTabIndex = pagerState.currentPage,
                 containerColor = Color.Transparent,
                 divider = {}
             ) {
                 Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
+                    selected = pagerState.currentPage == 0,
+                    onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
                     text = { 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -81,8 +85,8 @@ fun TransfersScreen(
                     }
                 )
                 Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
+                    selected = pagerState.currentPage == 1,
+                    onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -93,18 +97,12 @@ fun TransfersScreen(
                 )
             }
 
-            AnimatedContent(
-                targetState = selectedTab,
-                transitionSpec = {
-                    if (targetState > initialState) {
-                        slideInHorizontally { it } + fadeIn() togetherWith slideOutHorizontally { -it } + fadeOut()
-                    } else {
-                        slideInHorizontally { -it } + fadeIn() togetherWith slideOutHorizontally { it } + fadeOut()
-                    }
-                },
-                label = "TabTransition"
-            ) { tab ->
-                when (tab) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                beyondViewportPageCount = 1
+            ) { page ->
+                when (page) {
                     0 -> ActiveTransfersList(activeTransfers, onCancelTransfer)
                     1 -> HistoryTransfersList(historyTransfers, onRetryTransfer)
                 }
@@ -120,10 +118,10 @@ fun ActiveTransfersList(transfers: List<FileDownloadState>, onCancel: (String) -
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            items(transfers) { state ->
+            items(transfers, key = { it.path }) { state ->
                 ActiveTransferItem(state, onCancel)
             }
         }
@@ -137,10 +135,10 @@ fun HistoryTransfersList(transfers: List<FileDownloadState>, onRetry: (FileDownl
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(transfers) { state ->
+            items(transfers, key = { it.path }) { state ->
                 HistoryTransferItem(state, onRetry)
             }
         }
@@ -157,7 +155,7 @@ fun ActiveTransferItem(state: FileDownloadState, onCancel: (String) -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(state.fileName, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("to Downloads", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("from ${state.serverAddress}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = { onCancel(state.path) }) {
                     Icon(Icons.Rounded.Cancel, contentDescription = "Cancel", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
@@ -183,12 +181,14 @@ fun ActiveTransferItem(state: FileDownloadState, onCancel: (String) -> Unit) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Text(
-                    "${MimeTypeUtil.formatFileSize(state.speedBytesPerSecond)}/s",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
+                if (state.status == DownloadStatus.IN_PROGRESS) {
+                    Text(
+                        "${MimeTypeUtil.formatFileSize(state.speedBytesPerSecond)}/s",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }
@@ -197,6 +197,7 @@ fun ActiveTransferItem(state: FileDownloadState, onCancel: (String) -> Unit) {
 @Composable
 fun HistoryTransferItem(state: FileDownloadState, onRetry: (FileDownloadState) -> Unit) {
     val isSuccess = state.status == DownloadStatus.COMPLETE
+    val isCancelled = state.status == DownloadStatus.CANCELLED
     
     Row(
         modifier = Modifier
@@ -209,16 +210,27 @@ fun HistoryTransferItem(state: FileDownloadState, onRetry: (FileDownloadState) -
                 .size(40.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(
-                    if (isSuccess) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                    else MaterialTheme.colorScheme.error.copy(alpha = 0.1f)
+                    when {
+                        isSuccess -> MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                        isCancelled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f)
+                        else -> MaterialTheme.colorScheme.error.copy(alpha = 0.1f)
+                    }
                 ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                if (isSuccess) Icons.Rounded.Download else Icons.Rounded.Cancel,
+                when {
+                    isSuccess -> Icons.Rounded.Download
+                    isCancelled -> Icons.Rounded.Cancel
+                    else -> Icons.Rounded.Cancel
+                },
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
-                tint = if (isSuccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                tint = when {
+                    isSuccess -> MaterialTheme.colorScheme.primary
+                    isCancelled -> MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> MaterialTheme.colorScheme.error
+                }
             )
         }
         
@@ -227,9 +239,17 @@ fun HistoryTransferItem(state: FileDownloadState, onRetry: (FileDownloadState) -
         Column(modifier = Modifier.weight(1f)) {
             Text(state.fileName, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                if (isSuccess) "Completed" else "Failed: ${state.errorMessage ?: "Unknown error"}",
+                when {
+                    isSuccess -> "Completed"
+                    isCancelled -> "Cancelled"
+                    else -> "Failed: ${state.errorMessage.ifEmpty { "Unknown error" }}"
+                },
                 style = MaterialTheme.typography.bodySmall,
-                color = if (isSuccess) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
+                color = when {
+                    isSuccess -> MaterialTheme.colorScheme.onSurfaceVariant
+                    isCancelled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    else -> MaterialTheme.colorScheme.error
+                }
             )
         }
         

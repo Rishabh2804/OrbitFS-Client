@@ -2,6 +2,7 @@ package org.orbitfs.android.client
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -14,6 +15,7 @@ import java.io.IOException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import timber.log.Timber
+import java.io.OutputStream
 
 class OrbitFSClientWrapper(
     private val host: String,
@@ -148,6 +150,30 @@ class OrbitFSClientWrapper(
         }
     }
 
+    suspend fun streamFile(path: String, output: OutputStream, onProgress: ((bytesRead: Long, totalSize: Long) -> Unit)? = null) = withContext(Dispatchers.IO) {
+        val handle = openHandle(path)
+        try {
+            val stat = requireClient().stat(handle)
+            if (stat.isDirectory()) {
+                throw IOException("Cannot read a directory: $path")
+            }
+            val fileSize = stat.size().toLong()
+            var offset = 0L
+            while (offset < fileSize) {
+                ensureActive()
+                val count = minOf(chunkSize.toLong(), fileSize - offset).toInt()
+                val chunk = requireClient().read(handle, offset, count)
+                if (chunk.isEmpty()) break
+                output.write(chunk)
+                offset += chunk.size
+                onProgress?.invoke(offset, fileSize)
+            }
+            output.flush()
+        } finally {
+            closeHandle(handle)
+        }
+    }
+
     suspend fun readFile(path: String, onProgress: ((bytesRead: Long, totalSize: Long) -> Unit)? = null): ByteArray = withContext(Dispatchers.IO) {
         Timber.d("readFile: path='$path'")
         val handle = openHandle(path)
@@ -166,6 +192,7 @@ class OrbitFSClientWrapper(
             val result = ByteArrayOutputStream()
             var offset = 0L
             while (offset < fileSize) {
+                ensureActive()
                 val count = minOf(chunkSize.toLong(), fileSize - offset).toInt()
                 Timber.d("readFile: requesting read at offset=$offset count=$count")
                 val chunk = requireClient().read(handle, offset, count)

@@ -335,6 +335,19 @@ fun FileRow(
                         }
                     }
                     DownloadStatus.COMPLETE -> {}
+                    DownloadStatus.CANCELLED -> {
+                        IconButton(
+                            onClick = { debouncedDownload() },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "Retry load",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

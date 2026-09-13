@@ -12,7 +12,7 @@ data class FileInfo(
     val permissions: String = "",
     val owner: String = ""
 ) {
-    val displayName: String get() = if (isDirectory && !name.endsWith("/")) "$name/" else name
+    val displayName: String get() = name
 
     fun getFileType(): String {
         if (extension.isEmpty()) return if (isDirectory) "Folder" else "Unknown"

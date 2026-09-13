@@ -12,20 +12,33 @@ data class SavedHost(
     val name: String,
     val host: String,
     val port: Int,
-    val authToken: String? = null
+    val authToken: String? = null,
+    val guardedDeletion: Boolean = true,
+    val socketTimeoutMs: Int = 10_000,
+    val chunkSizeKb: Int = 256,
+    val autoLoadLimitKb: Int = 512
 )
 
 data class ConnectionConfig(
+    val name: String = "Satellite",
     val host: String = "192.168.0.5",
     val port: Int = 9090,
-    val authToken: String? = null
+    val authToken: String? = null,
+    val guardedDeletion: Boolean = true,
+    val socketTimeoutMs: Int = 10_000,
+    val chunkSizeKb: Int = 256,
+    val autoLoadLimitKb: Int = 512
 ) {
     fun toSavedHost(name: String) = SavedHost(
         id = name,
         name = name,
         host = host,
         port = port,
-        authToken = authToken
+        authToken = authToken,
+        guardedDeletion = guardedDeletion,
+        socketTimeoutMs = socketTimeoutMs,
+        chunkSizeKb = chunkSizeKb,
+        autoLoadLimitKb = autoLoadLimitKb
     )
 }
 
@@ -51,7 +64,11 @@ class HostRepository(
                         name = obj.getString("name"),
                         host = obj.getString("host"),
                         port = obj.getInt("port"),
-                        authToken = obj.optString("authToken").takeIf { it.isNotEmpty() }
+                        authToken = obj.optString("authToken").takeIf { it.isNotEmpty() },
+                        guardedDeletion = obj.optBoolean("guardedDeletion", true),
+                        socketTimeoutMs = obj.optInt("socketTimeoutMs", 10_000),
+                        chunkSizeKb = obj.optInt("chunkSizeKb", 256),
+                        autoLoadLimitKb = obj.optInt("autoLoadLimitKb", 512)
                     )
                 }
                 _hosts.value = list
@@ -71,6 +88,10 @@ class HostRepository(
                     put("host", h.host)
                     put("port", h.port)
                     put("authToken", h.authToken ?: "")
+                    put("guardedDeletion", h.guardedDeletion)
+                    put("socketTimeoutMs", h.socketTimeoutMs)
+                    put("chunkSizeKb", h.chunkSizeKb)
+                    put("autoLoadLimitKb", h.autoLoadLimitKb)
                 })
             }
             hostsFile.writeText(arr.toString())

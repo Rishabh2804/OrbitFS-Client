@@ -1,79 +1,83 @@
 package org.orbitfs.android
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import org.orbitfs.android.client.ConnectionManager
 import org.orbitfs.android.data.HostRepository
+import org.orbitfs.android.data.LocalFileRepository
 import org.orbitfs.android.data.SettingsRepository
 import org.orbitfs.android.ui.FileBrowserViewModel
 import org.orbitfs.android.ui.FileBrowserViewModelFactory
 import org.orbitfs.android.ui.OrbitFSRoot
 import java.io.File
 
-private const val TAG = "MainActivity"
-
 class MainActivity : ComponentActivity() {
 
     private lateinit var hostRepository: HostRepository
     private lateinit var connectionManager: ConnectionManager
     private lateinit var viewModel: FileBrowserViewModel
+    private lateinit var localFileRepository: LocalFileRepository
 
-    private var backPressedAt = 0L
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ -> }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         hostRepository = HostRepository(File(filesDir, "hosts.json"))
-        connectionManager = ConnectionManager(lifecycleScope)
         val settingsRepo = SettingsRepository(applicationContext)
+        localFileRepository = LocalFileRepository(applicationContext)
+        connectionManager = ConnectionManager(lifecycleScope)
+        
         val factory = FileBrowserViewModelFactory(
             connectionManager,
             hostRepository,
             settingsRepo,
-            applicationContext
+            localFileRepository
         )
         viewModel = factory.create(FileBrowserViewModel::class.java)
 
+        checkPermissions()
+
         setContent {
             OrbitFSRoot(
+                viewModel = viewModel,
                 connectionManager = connectionManager,
                 hostRepository = hostRepository,
-                viewModel = viewModel,
                 settingsRepository = settingsRepo
             )
         }
+    }
 
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (viewModel.isMultiSelect) {
-                    viewModel.clearSelection()
-                    return
-                }
-                val currentPath = viewModel.currentPath
-                if (currentPath.isNotEmpty() && connectionManager.isConnected()) {
-                    viewModel.navigateTo("..")
-                } else if (connectionManager.isConnected()) {
-                    viewModel.disconnect()
-                } else {
-                    if (System.currentTimeMillis() - backPressedAt < 2000) {
-                        finish()
-                    } else {
-                        backPressedAt = System.currentTimeMillis()
-                        Toast.makeText(this@MainActivity, "Press back again to exit", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-        })
+    private fun checkPermissions() {
+        val permissions = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        
+        val toRequest = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        
+        if (toRequest.isNotEmpty()) {
+            requestPermissionLauncher.launch(toRequest.toTypedArray())
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        connectionManager.disconnect()
+        if (::connectionManager.isInitialized) {
+            connectionManager.disconnect()
+        }
     }
 }

@@ -5,6 +5,7 @@ import android.webkit.MimeTypeMap
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import java.util.Date
 import java.util.Locale
 
 object MimeTypeUtil {
@@ -79,6 +80,8 @@ object MimeTypeUtil {
     fun formatDate(timestamp: Long): String {
         if (timestamp <= 0) return "Unknown"
         val sdf = java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.getDefault())
-        return sdf.format(java.util.Date(timestamp * 1000))
+        // Detect if timestamp is in seconds or millis
+        val date = if (timestamp < 10000000000L) Date(timestamp * 1000) else Date(timestamp)
+        return sdf.format(date)
     }
 }

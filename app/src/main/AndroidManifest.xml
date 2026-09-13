@@ -32,6 +32,14 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <receiver
+            android:name=".client.NotificationActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.orbitfs.android.ACTION_CANCEL_DOWNLOAD" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

@@ -2,17 +2,71 @@ package org.orbitfs.android.ui.screens
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.SaveAlt
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Sort
+import androidx.compose.material.icons.rounded.Upload
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,7 +76,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import org.orbitfs.android.model.BrowserState
 import org.orbitfs.android.model.FileInfo
-import org.orbitfs.android.ui.theme.*
+import org.orbitfs.android.model.SortOrder
+import org.orbitfs.android.model.SortType
+import org.orbitfs.android.ui.theme.OrbitFSTheme
 import org.orbitfs.android.util.MimeTypeUtil
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,9 +99,14 @@ fun FileExplorerScreen(
     onViewStat: (FileInfo) -> Unit,
     onSaveToDevice: (FileInfo) -> Unit,
     onShareFile: (FileInfo) -> Unit,
-    onDeleteSelected: () -> Unit
+    onDeleteSelected: () -> Unit,
+    onSortChange: (SortType, SortOrder) -> Unit,
+    onRefresh: () -> Unit,
+    onToggleHiddenFiles: () -> Unit,
+    onSessionSettings: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
     
     val topBarBgColor by animateColorAsState(
         targetValue = if (state.isMultiSelect) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
@@ -63,11 +124,13 @@ fun FileExplorerScreen(
                             fontWeight = FontWeight.Bold
                         )
                     } else {
-                        Column {
+                        Column(verticalArrangement = Arrangement.Center) {
                             Text(
                                 serverName,
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 serverAddress,
@@ -84,7 +147,7 @@ fun FileExplorerScreen(
                         }
                     } else {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                         }
                     }
                 },
@@ -142,11 +205,50 @@ fun FileExplorerScreen(
                         IconButton(onClick = onSearchClick) {
                             Icon(Icons.Rounded.Search, contentDescription = "Search")
                         }
+                        Box {
+                            IconButton(onClick = { showMenu = true }) {
+                                Icon(Icons.Rounded.MoreVert, contentDescription = "Menu")
+                            }
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Sort By") },
+                                    leadingIcon = { Icon(Icons.Rounded.Sort, contentDescription = null) },
+                                    trailingIcon = { Icon(Icons.Rounded.ChevronRight, contentDescription = null) },
+                                    onClick = {
+                                        showMenu = false
+                                        showSortMenu = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (state.showHiddenFiles) "Hide Hidden Files" else "Show Hidden Files") },
+                                    leadingIcon = { Icon(if (state.showHiddenFiles) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, contentDescription = null) },
+                                    onClick = {
+                                        showMenu = false
+                                        onToggleHiddenFiles()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Directory Info") },
+                                    leadingIcon = { Icon(Icons.Rounded.Info, contentDescription = null) },
+                                    onClick = {
+                                        showMenu = false
+                                        onViewStat(FileInfo("..", state.currentPath, 0, true))
+                                    }
+                                )
+                            }
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = topBarBgColor
-                )
+                    containerColor = topBarBgColor,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                windowInsets = WindowInsets.statusBars
             )
         },
         floatingActionButton = {
@@ -173,34 +275,108 @@ fun FileExplorerScreen(
             }
         }
     ) { padding ->
-        Column(
+        PullToRefreshBox(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding),
+            isRefreshing = state.isRefreshing,
+            onRefresh = onRefresh
         ) {
-            BreadcrumbBar(currentPath = state.currentPath, onBreadcrumbClick = onBreadcrumbClick)
-            
-            if (state.isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 80.dp)
-                ) {
-                    items(state.files) { file ->
-                        FileRowItem(
-                            file = file,
-                            isSelected = state.selectedPaths.contains(file.path),
-                            onClick = { onItemClick(file) },
-                            onLongClick = { onItemLongClick(file) },
-                            onSelectToggle = { onItemSelectToggle(file) }
-                        )
+            Column(modifier = Modifier.fillMaxSize()) {
+                BreadcrumbBar(currentPath = state.currentPath, onBreadcrumbClick = onBreadcrumbClick)
+                
+                if (state.isLoading && state.files.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 16.dp)
+                    ) {
+                        items(state.files, key = { it.path }) { file ->
+                            FileRowItem(
+                                file = file,
+                                isSelected = state.selectedPaths.contains(file.path),
+                                onClick = { onItemClick(file) },
+                                onLongClick = { onItemLongClick(file) }
+                            )
+                        }
                     }
                 }
             }
         }
+
+        if (showSortMenu) {
+            SortDialog(
+                currentType = state.sortType,
+                currentOrder = state.sortOrder,
+                onDismiss = { showSortMenu = false },
+                onConfirm = { type, order ->
+                    showSortMenu = false
+                    onSortChange(type, order)
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun SortDialog(
+    currentType: SortType,
+    currentOrder: SortOrder,
+    onDismiss: () -> Unit,
+    onConfirm: (SortType, SortOrder) -> Unit
+) {
+    var selectedType by remember { mutableStateOf(currentType) }
+    var selectedOrder by remember { mutableStateOf(currentOrder) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Sort Files", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("Sort By", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Column {
+                    SortOption("Name", selectedType == SortType.Name) { selectedType = SortType.Name }
+                    SortOption("Date Modified", selectedType == SortType.Date) { selectedType = SortType.Date }
+                    SortOption("Size", selectedType == SortType.Size) { selectedType = SortType.Size }
+                }
+                
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                
+                Text("Order", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Column {
+                    SortOption("Ascending", selectedOrder == SortOrder.Ascending) { selectedOrder = SortOrder.Ascending }
+                    SortOption("Descending", selectedOrder == SortOrder.Descending) { selectedOrder = SortOrder.Descending }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(selectedType, selectedOrder) }, shape = RoundedCornerShape(12.dp)) {
+                Text("Apply")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun SortOption(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -251,8 +427,7 @@ fun FileRowItem(
     file: FileInfo,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onSelectToggle: () -> Unit
+    onLongClick: () -> Unit
 ) {
     Surface(
         color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent,
@@ -269,7 +444,6 @@ fun FileRowItem(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Simplified Checkbox / Selection state
             if (isSelected) {
                 Icon(
                     Icons.Rounded.CheckCircle,
@@ -279,7 +453,7 @@ fun FileRowItem(
                 )
             } else {
                 Icon(
-                    imageVector = if (file.isDirectory) Icons.Rounded.Folder else Icons.Rounded.InsertDriveFile,
+                    imageVector = if (file.isDirectory) Icons.Rounded.Folder else Icons.AutoMirrored.Rounded.InsertDriveFile,
                     contentDescription = null,
                     tint = if (file.isDirectory) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f) 
                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
@@ -338,7 +512,11 @@ fun FileExplorerPreview() {
             onViewStat = {},
             onSaveToDevice = {},
             onShareFile = {},
-            onDeleteSelected = {}
+            onDeleteSelected = {},
+            onSortChange = { _, _ -> },
+            onRefresh = {},
+            onToggleHiddenFiles = {},
+            onSessionSettings = {}
         )
     }
 }

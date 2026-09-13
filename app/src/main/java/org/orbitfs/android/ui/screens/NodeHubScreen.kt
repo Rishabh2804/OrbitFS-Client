@@ -9,10 +9,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -21,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import org.orbitfs.android.data.SavedHost
+import org.orbitfs.android.model.PilotAvatar
 import org.orbitfs.android.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,32 +30,52 @@ import org.orbitfs.android.ui.theme.*
 fun NodeHubScreen(
     hosts: List<SavedHost>,
     pingResults: Map<String, Int?>,
+    username: String,
+    avatarId: String = "rocket",
     onAddNode: () -> Unit,
+    onEditNode: (SavedHost) -> Unit,
     onConnect: (SavedHost) -> Unit,
     onRetry: (SavedHost) -> Unit,
-    onProfileClick: () -> Unit
+    onProfileClick: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
+    val avatar = PilotAvatar.getById(avatarId)
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Text(
-                        "OrbitFS",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onProfileClick) {
-                        Icon(
-                            Icons.Rounded.Person,
-                            contentDescription = "Profile",
-                            tint = MaterialTheme.colorScheme.primary
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "OrbitFS",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            username,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                 },
+                navigationIcon = {
+                    IconButton(onClick = onProfileClick) {
+                        Surface(
+                            modifier = Modifier.size(32.dp),
+                            shape = CircleShape,
+                            color = avatar.color.copy(alpha = 0.2f)
+                        ) {
+                            Icon(
+                                imageVector = avatar.icon,
+                                contentDescription = "Profile",
+                                tint = avatar.color,
+                                modifier = Modifier.padding(6.dp)
+                            )
+                        }
+                    }
+                },
                 actions = {
-                    IconButton(onClick = {}) {
+                    IconButton(onClick = onSettingsClick) {
                         Icon(Icons.Rounded.Settings, contentDescription = "Settings")
                     }
                 },
@@ -100,15 +122,16 @@ fun NodeHubScreen(
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(bottom = 80.dp)
+                    contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
-                    items(hosts) { host ->
+                    items(hosts, key = { it.id }) { host ->
                         val ping = pingResults[host.id]
                         NodeCard(
                             host = host,
                             ping = ping,
                             onConnect = { onConnect(host) },
-                            onRetry = { onRetry(host) }
+                            onRetry = { onRetry(host) },
+                            onEdit = { onEditNode(host) }
                         )
                     }
                 }
@@ -122,7 +145,8 @@ fun NodeCard(
     host: SavedHost,
     ping: Int?,
     onConnect: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onEdit: () -> Unit
 ) {
     val isOnline = ping != null
 
@@ -173,15 +197,31 @@ fun NodeCard(
                 )
             }
 
-            if (isOnline) {
-                StatusPill(ping = ping)
-            } else {
-                Text(
-                    "Offline",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                    fontWeight = FontWeight.Bold
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (isOnline) {
+                    StatusPill(ping = ping)
+                } else {
+                    Text(
+                        "Offline",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                IconButton(
+                    onClick = { onEdit() },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.Edit,
+                        contentDescription = "Edit",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }
@@ -244,10 +284,14 @@ fun NodeHubPreview() {
                 SavedHost("2", "Home Lab", "192.168.1.100", 9090)
             ),
             pingResults = mapOf("1" to 42, "2" to null),
+            username = "Pilot-Alpha",
+            avatarId = "rocket",
             onAddNode = {},
+            onEditNode = {},
             onConnect = {},
             onRetry = {},
-            onProfileClick = {}
+            onProfileClick = {},
+            onSettingsClick = {}
         )
     }
 }
