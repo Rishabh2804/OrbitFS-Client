@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Person
@@ -23,6 +24,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import org.orbitfs.android.data.SavedHost
 import org.orbitfs.android.model.PilotAvatar
+import org.orbitfs.android.model.SatelliteState
 import org.orbitfs.android.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,12 +34,14 @@ fun NodeHubScreen(
     pingResults: Map<String, Int?>,
     username: String,
     avatarId: String = "rocket",
+    satelliteState: SatelliteState = SatelliteState(),
     onAddNode: () -> Unit,
     onEditNode: (SavedHost) -> Unit,
     onConnect: (SavedHost) -> Unit,
     onRetry: (SavedHost) -> Unit,
     onProfileClick: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onLaunchSatellite: () -> Unit
 ) {
     val avatar = PilotAvatar.getById(avatarId)
 
@@ -117,7 +121,15 @@ fun NodeHubScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
             
-            if (hosts.isEmpty()) {
+            // Local Satellite Card
+            SatelliteLauncherCard(
+                state = satelliteState,
+                onClick = onLaunchSatellite
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            if (hosts.isEmpty() && !satelliteState.isRunning) {
                 EmptyNodesContent()
             } else {
                 LazyColumn(
@@ -135,6 +147,70 @@ fun NodeHubScreen(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun SatelliteLauncherCard(
+    state: SatelliteState,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (state.isRunning) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                           else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        if (state.isRunning) ColorStatusGreen.copy(alpha = 0.1f)
+                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.Settings,
+                    contentDescription = null,
+                    tint = if (state.isRunning) ColorStatusGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Local Satellite",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    if (state.isRunning) "Running on port ${state.port}" else "Turn this device into a node",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (state.isRunning) {
+                StatusPill(ping = 0) // Local is always fast
+            } else {
+                Icon(
+                    Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                )
             }
         }
     }
@@ -286,12 +362,14 @@ fun NodeHubPreview() {
             pingResults = mapOf("1" to 42, "2" to null),
             username = "Pilot-Alpha",
             avatarId = "rocket",
+            satelliteState = SatelliteState(),
             onAddNode = {},
             onEditNode = {},
             onConnect = {},
             onRetry = {},
             onProfileClick = {},
-            onSettingsClick = {}
+            onSettingsClick = {},
+            onLaunchSatellite = {}
         )
     }
 }

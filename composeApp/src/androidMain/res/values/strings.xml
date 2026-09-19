@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">OrbitFS</string>
+    <string name="app_bar_title">OrbitFS</string>
+    <string name="connection_settings_title">Connection Settings</string>
+    <string name="server_host_label">Server Host</string>
+    <string name="server_port_label">Port</string>
+    <string name="connect_button">Connect</string>
+    <string name="connecting_message">Connecting...</string>
+    <string name="connected_message">Connected</string>
+    <string name="disconnected_message">Disconnected</string>
+    <string name="connection_failed">Server unreachable. Retrying...</string>
+    <string name="connection_error">Connection Error</string>
+    <string name="server_unreachable">Server unreachable. Check host and port.</string>
+    <string name="retry_button">Retry</string>
+    <string name="gave_up_message">Could not connect after 5 attempts. Give up?</string>
+    <string name="give_up_button">Give Up</string>
+    <string name="root_path">/</string>
+    <string name="parent_dir">..</string>
+    <string name="empty_directory">Directory is empty</string>
+    <string name="loading_files">Loading...</string>
+    <string name="error_loading_files">Failed to load files</string>
+    <string name="pull_to_refresh">Pull to refresh</string>
+    <string name="tap_to_connect">Tap to connect</string>
+    <string name="file_size_bytes">%1$d bytes</string>
+    <string name="file_size_kb">%.1f KB</string>
+    <string name="file_size_mb">%.1f MB</string>
+    <string name="file_size_gb">%.1f GB</string>
+    <string name="modified">Modified</string>
+    <string name="dir_count">%1$d items</string>
+    <string name="default_host">192.168.1.100</string>
+    <string name="default_port">9090</string>
+
+</resources>

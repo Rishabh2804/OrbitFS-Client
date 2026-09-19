@@ -65,6 +65,7 @@ dependencies {
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    implementation(project(":composeApp"))
     implementation(files("libs/orbitfs-core-0.1.0.jar"))
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")

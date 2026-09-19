@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "org.orbitfs.android.composeApp-mergeReleaseResources-56:/values-ldltr-v21/values-ldltr-v21.xml",
+            "map": [
+                {
+                    "source": "/Users/rishabh/.gradle/caches/9.3.1/transforms/b8c7ea06ad78110528f4f5fc195ec280/transformed/appcompat-1.6.1/res/values-ldltr-v21/values-ldltr-v21.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "112",
+                        "endOffsets": "163"
+                    }
+                }
+            ]
+        }
+    ]
+}

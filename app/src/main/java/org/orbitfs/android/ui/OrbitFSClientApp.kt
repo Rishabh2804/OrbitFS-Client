@@ -1,30 +1,39 @@
 package org.orbitfs.android.ui
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.net.nsd.NsdServiceInfo
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Radar
+import androidx.compose.material.icons.rounded.Router
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -39,6 +48,7 @@ import org.orbitfs.android.data.SettingsRepository
 import org.orbitfs.android.model.BrowserState
 import org.orbitfs.android.model.FileDownloadState
 import org.orbitfs.android.model.FileInfo
+import org.orbitfs.android.model.SatelliteState
 import org.orbitfs.android.model.SortOrder
 import org.orbitfs.android.model.SortType
 import org.orbitfs.android.model.UiEffect
@@ -62,7 +72,11 @@ fun OrbitFSRoot(
     val username by settingsRepository.username.collectAsStateWithLifecycle()
     val avatarId by settingsRepository.avatarId.collectAsStateWithLifecycle()
     val themeMode by settingsRepository.themeMode.collectAsStateWithLifecycle()
+    val satelliteState by viewModel.satelliteState.collectAsStateWithLifecycle()
+    val discoveredOrbiters by viewModel.discoveredOrbiters.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
+    
     val darkTheme = when (themeMode) {
         "Dark Space" -> true
         "Light Orbit" -> false
@@ -95,12 +109,19 @@ fun OrbitFSRoot(
             onRefresh = { viewModel.refreshCurrentPath() },
             onToggleHidden = { viewModel.toggleHiddenFiles() },
             onCancelDownload = { viewModel.cancelDownload(it) },
-            onRetryDownload = { viewModel.retryDownload(it) },
+            onRetryDownload = { path -> viewModel.retryDownload(path) },
             onClearHistory = { viewModel.clearTransferHistory() },
             onSaveToDevice = { viewModel.saveToDownloadsWithDestination(it.first, it.second) },
             onShareFile = { viewModel.shareFile(it) },
             onUpdateActiveHostSettings = { gd, to, cs, al -> viewModel.updateActiveHostSettings(gd, to, cs, al) },
             onDismissLargeDownload = { viewModel.dismissLargeDownload() },
+            satelliteState = satelliteState,
+            discoveredOrbiters = discoveredOrbiters,
+            onToggleSatellite = { ctx -> viewModel.toggleSatellite(ctx) },
+            onUpdateSatelliteRoot = { uri, path -> viewModel.updateSatelliteRoot(uri, path) },
+            onUpdateSatellitePort = { viewModel.updateSatellitePort(it) },
+            onStartRadar = { viewModel.startRadar() },
+            onStopRadar = { viewModel.stopRadar() },
             uiEffects = viewModel.uiEffects,
             settingsRepository = settingsRepository
         )
@@ -138,11 +159,32 @@ fun OrbitFSRootContent(
     onShareFile: (FileInfo) -> Unit,
     onUpdateActiveHostSettings: (Boolean, Int, Int, Int) -> Unit,
     onDismissLargeDownload: () -> Unit,
+    satelliteState: SatelliteState,
+    discoveredOrbiters: Set<NsdServiceInfo>,
+    onToggleSatellite: (Context) -> Unit,
+    onUpdateSatelliteRoot: (Uri, String) -> Unit,
+    onUpdateSatellitePort: (Int) -> Unit,
+    onStartRadar: () -> Unit,
+    onStopRadar: () -> Unit,
     uiEffects: Flow<UiEffect>? = null,
     settingsRepository: SettingsRepository? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+        onResult = { uri ->
+            if (uri != null) {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                val pathDisplay = uri.path?.substringAfterLast(":") ?: "Shared Folder"
+                onUpdateSatelliteRoot(uri, pathDisplay)
+            }
+        }
+    )
 
     // Handle UI Effects
     LaunchedEffect(Unit) {
@@ -174,9 +216,8 @@ fun OrbitFSRootContent(
     
     val isConnected = connectionState is ConnectionState.Connected
     
-    // Pages in Hub: [0: Profile, 1: NodeHub, 2: Settings]
-    val hubPagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
-    // Pages in Session: [0: Explorer, 1: Transfers, 2: Configuration]
+    // Hub Pager Order: [0: Profile, 1: Nodes, 2: Radar, 3: Satellite, 4: Settings]
+    val hubPagerState = rememberPagerState(initialPage = 1, pageCount = { 5 })
     val sessionPagerState = rememberPagerState(pageCount = { 3 })
     
     var showAddNodeDialog by rememberSaveable { mutableStateOf(false) }
@@ -221,7 +262,7 @@ fun OrbitFSRootContent(
             if (hubPagerState.currentPage != 1) {
                 scope.launch { hubPagerState.animateScrollToPage(1) }
             } else {
-                // System exit handled by OS
+                // OS handles exit
             }
         }
     }
@@ -255,6 +296,37 @@ fun OrbitFSRootContent(
                         label = { Text("Configuration") }
                     )
                 }
+            } else if (hubPagerState.currentPage > 0) { // Only show bottom nav for main pages (1-4)
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 8.dp,
+                    windowInsets = WindowInsets.navigationBars
+                ) {
+                    NavigationBarItem(
+                        selected = hubPagerState.currentPage == 1,
+                        onClick = { scope.launch { hubPagerState.animateScrollToPage(1) } },
+                        icon = { Icon(Icons.Rounded.FolderOpen, contentDescription = null) },
+                        label = { Text("Nodes") }
+                    )
+                    NavigationBarItem(
+                        selected = hubPagerState.currentPage == 2,
+                        onClick = { scope.launch { hubPagerState.animateScrollToPage(2) } },
+                        icon = { Icon(Icons.Rounded.Radar, contentDescription = null) },
+                        label = { Text("Radar") }
+                    )
+                    NavigationBarItem(
+                        selected = hubPagerState.currentPage == 3,
+                        onClick = { scope.launch { hubPagerState.animateScrollToPage(3) } },
+                        icon = { Icon(Icons.Rounded.Router, contentDescription = null) },
+                        label = { Text("Satellite") }
+                    )
+                    NavigationBarItem(
+                        selected = hubPagerState.currentPage == 4,
+                        onClick = { scope.launch { hubPagerState.animateScrollToPage(4) } },
+                        icon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
+                        label = { Text("Settings") }
+                    )
+                }
             }
         }
     ) { paddingValues ->
@@ -263,7 +335,8 @@ fun OrbitFSRootContent(
                 HorizontalPager(
                     state = hubPagerState,
                     modifier = Modifier.fillMaxSize(),
-                    beyondViewportPageCount = 1
+                    beyondViewportPageCount = 1,
+                    userScrollEnabled = false // Disable swipe on home screen
                 ) { page ->
                     when (page) {
                         0 -> {
@@ -279,14 +352,47 @@ fun OrbitFSRootContent(
                             pingResults = pingResults,
                             username = username,
                             avatarId = avatarId,
+                            satelliteState = satelliteState,
                             onAddNode = { showAddNodeDialog = true },
                             onEditNode = { hostToEdit = it },
                             onConnect = { onConnect(it) },
                             onRetry = { onConnect(it) },
                             onProfileClick = { scope.launch { hubPagerState.animateScrollToPage(0) } },
-                            onSettingsClick = { scope.launch { hubPagerState.animateScrollToPage(2) } }
+                            onSettingsClick = { scope.launch { hubPagerState.animateScrollToPage(4) } },
+                            onLaunchSatellite = { scope.launch { hubPagerState.animateScrollToPage(3) } }
                         )
                         2 -> {
+                            DisposableEffect(Unit) {
+                                onStartRadar()
+                                onDispose { onStopRadar() }
+                            }
+                            RadarScreen(
+                                discoveredOrbiters = discoveredOrbiters,
+                                savedHosts = hosts,
+                                pilotAvatarId = avatarId,
+                                onBack = { scope.launch { hubPagerState.animateScrollToPage(1) } },
+                                onOrbiterClick = { info ->
+                                    val name = info.serviceName.removePrefix("OrbitFS-")
+                                    val host = info.host?.hostAddress ?: ""
+                                    if (host.isNotEmpty()) {
+                                        onAddHost(name, host, info.port)
+                                        scope.launch { hubPagerState.animateScrollToPage(1) }
+                                    }
+                                }
+                            )
+                        }
+                        3 -> {
+                            SatelliteScreen(
+                                state = satelliteState,
+                                discoveredOrbiters = discoveredOrbiters,
+                                onBack = { scope.launch { hubPagerState.animateScrollToPage(1) } },
+                                onToggleServer = { onToggleSatellite(context) },
+                                onPickFolder = { folderPickerLauncher.launch(null) },
+                                onUpdatePort = onUpdateSatellitePort,
+                                onOrbiterClick = { /* Handled in radar */ }
+                            )
+                        }
+                        4 -> {
                             if (settingsRepository != null) {
                                 SettingsScreen(
                                     settingsRepository = settingsRepository,
@@ -302,7 +408,7 @@ fun OrbitFSRootContent(
                     state = sessionPagerState,
                     modifier = Modifier.fillMaxSize(),
                     beyondViewportPageCount = 1,
-                    userScrollEnabled = sessionPagerState.currentPage != 1 // Disable outer swipe when in Transfers (which has its own pager)
+                    userScrollEnabled = sessionPagerState.currentPage != 1
                 ) { page ->
                     when (page) {
                         0 -> {
@@ -350,7 +456,7 @@ fun OrbitFSRootContent(
                             onBack = { scope.launch { sessionPagerState.animateScrollToPage(0) } },
                             onClearHistory = { onClearHistory() },
                             onCancelTransfer = { onCancelDownload(it) },
-                            onRetryTransfer = { onRetryDownload(it.path) }
+                            onRetryTransfer = { state -> onRetryDownload(state.path) }
                         )
                         2 -> {
                             val currentHost = hosts.find { it.host == connectionState.config.host && it.port == connectionState.config.port }
@@ -612,4 +718,56 @@ fun SessionSettingsPage(
             )
         }
     }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun OrbitFSRootPreview() {
+     OrbitFSRootContent(
+        connectionState = ConnectionState.Connected(ConnectionConfig("Mars Base", "127.0.0.1", 9090)),
+        hosts = listOf(
+            SavedHost("1", "Mars Base", "127.0.0.1", 9090),
+            SavedHost("2", "Earth Relay", "192.168.1.1", 8080)
+        ),
+        browserState = BrowserState(
+            currentPath = "/root/data",
+            files = listOf(
+                FileInfo("sensor_log.txt", "/root/data/sensor_log.txt", 1024, false),
+                FileInfo("telemetry", "/root/data/telemetry", 0, true)
+            )
+        ),
+        downloadStates = emptyMap(),
+        pingResults = mapOf("1" to 20, "2" to null),
+        username = "Pilot-Preview",
+        avatarId = "rocket",
+        onAddHost = { _, _, _ -> },
+        onUpdateHost = { _, _, _, _, _, _, _, _ -> },
+        onRemoveHost = { },
+        onConnect = { },
+        onDisconnect = { },
+        onNavigateTo = { },
+        onOpenFile = { },
+        onSelectFile = { },
+        onToggleMultiSelect = { },
+        onClearSelection = { },
+        onDeleteSelected = { },
+        onUpdateSort = { _, _ -> },
+        onRefresh = { },
+        onToggleHidden = { },
+        onCancelDownload = { },
+        onRetryDownload = { },
+        onClearHistory = { },
+        onSaveToDevice = { },
+        onShareFile = { },
+        onUpdateActiveHostSettings = { _, _, _, _ -> },
+        onDismissLargeDownload = { },
+        satelliteState = SatelliteState(),
+        discoveredOrbiters = emptySet(),
+        onToggleSatellite = { },
+        onUpdateSatelliteRoot = { _, _ -> },
+        onUpdateSatellitePort = { },
+        onStartRadar = { },
+        onStopRadar = { },
+        settingsRepository = null
+    )
 }

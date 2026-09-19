@@ -1,5 +1,7 @@
 package org.orbitfs.android.ui
 
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.collection.LruCache
 import androidx.lifecycle.ViewModel
@@ -9,15 +11,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.orbitfs.android.client.ConnectionManager
 import org.orbitfs.android.client.ConnectionState
 import org.orbitfs.android.client.NotificationSignals
+import org.orbitfs.android.client.NsdHelper
+import org.orbitfs.android.client.SatelliteServerLauncher
 import org.orbitfs.android.data.ConnectionConfig
 import org.orbitfs.android.data.HostRepository
 import org.orbitfs.android.data.LocalFileRepository
@@ -27,10 +28,12 @@ import org.orbitfs.android.model.BrowserState
 import org.orbitfs.android.model.DownloadStatus
 import org.orbitfs.android.model.FileDownloadState
 import org.orbitfs.android.model.FileInfo
+import org.orbitfs.android.model.SatelliteState
 import org.orbitfs.android.model.SortOrder
 import org.orbitfs.android.model.SortType
 import org.orbitfs.android.model.UiEffect
-import org.orbitfs.android.util.MimeTypeUtil
+import org.orbitfs.android.service.OrbitFSServerService
+import org.orbitfs.common.model.OrbiterInfo
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
@@ -59,6 +62,26 @@ class FileBrowserViewModel(
     private val _uiEffects = Channel<UiEffect>(Channel.BUFFERED)
     val uiEffects = _uiEffects.receiveAsFlow()
 
+    private val _satelliteState = MutableStateFlow(SatelliteState())
+    val satelliteState: StateFlow<SatelliteState> = _satelliteState
+
+    private val nsdHelper = NsdHelper(localFileRepository.context)
+    
+    val discoveredOrbiters: StateFlow<Set<OrbiterInfo>> = nsdHelper.discoveredServices
+        .map { services ->
+            services.mapNotNull { service ->
+                val hostAddr = service.host?.hostAddress ?: return@mapNotNull null
+                val avatarIdBytes = service.attributes?.get("avatarId")
+                val avatarId = avatarIdBytes?.let { String(it) } ?: "rocket"
+                OrbiterInfo(
+                    name = service.serviceName,
+                    host = hostAddr,
+                    port = service.port,
+                    avatarId = avatarId
+                )
+            }.toSet()
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
     val activeHost: SavedHost?
         get() = connectionManager.activeHostId?.let { id -> hostRepository.hosts.value.find { it.id == id } }
 
@@ -86,6 +109,21 @@ class FileBrowserViewModel(
         viewModelScope.launch {
             NotificationSignals.cancelRequest.collect { path ->
                 cancelDownload(path)
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.satelliteEnabled.collect { enabled ->
+                _satelliteState.update { it.copy(isRunning = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.satellitePort.collect { port ->
+                _satelliteState.update { it.copy(port = port) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.satelliteRootUri.collect { uri ->
+                _satelliteState.update { it.copy(rootUri = uri) }
             }
         }
         startPingMonitor()
@@ -440,9 +478,6 @@ class FileBrowserViewModel(
             }
         }.also {
             if (settingsRepository.notificationsEnabled.value) {
-                // For downloadWithProgress (usually open/share), we don't have a direct URI to open yet, 
-                // but openFile will handle opening the temp file.
-                // However, we should at least clear the progress notif.
                 localFileRepository.cancelNotification(notifId)
             }
             _downloadStates.update { current ->
@@ -683,6 +718,14 @@ class FileBrowserViewModel(
         }
     }
 
+    fun startRadar() {
+        nsdHelper.startDiscovery()
+    }
+
+    fun stopRadar() {
+        nsdHelper.stopDiscovery()
+    }
+
     fun connectToSavedHost(host: SavedHost) {
         connectionManager.connectToSavedHost(host)
     }
@@ -731,6 +774,48 @@ class FileBrowserViewModel(
 
     fun deleteHost(id: String) {
         hostRepository.removeHost(id)
+    }
+
+    fun updateSatelliteRoot(uri: Uri, path: String) {
+        settingsRepository.setSatelliteRootUri(uri.toString())
+        _satelliteState.update { it.copy(rootUri = uri.toString(), rootPath = path) }
+    }
+
+    fun updateSatellitePort(port: Int) {
+        settingsRepository.setSatellitePort(port)
+    }
+
+    fun toggleSatellite(context: Context) {
+        val current = _satelliteState.value
+        if (current.isRunning) {
+            stopSatellite(context)
+        } else {
+            startSatellite(context)
+        }
+    }
+
+    private fun startSatellite(context: Context) {
+        val rootUri = settingsRepository.satelliteRootUri.value
+        if (rootUri == null) {
+            viewModelScope.launch { _uiEffects.send(UiEffect.ShowToast("Please select a folder first")) }
+            return
+        }
+
+        val intent = Intent(context, OrbitFSServerService::class.java).apply {
+            action = OrbitFSServerService.ACTION_START
+        }
+        
+        context.startForegroundService(intent)
+        settingsRepository.setSatelliteEnabled(true)
+        _satelliteState.update { it.copy(pairingToken = "S-${(100..999).random()}") } 
+    }
+
+    private fun stopSatellite(context: Context) {
+        val intent = Intent(context, OrbitFSServerService::class.java).apply {
+            action = OrbitFSServerService.ACTION_STOP
+        }
+        context.startService(intent)
+        settingsRepository.setSatelliteEnabled(false)
     }
 
     companion object {

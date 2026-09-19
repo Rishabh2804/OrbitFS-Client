@@ -16,4 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "OrbitFS-Android"
 
-include(":app")
+include(":composeApp")
