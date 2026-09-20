@@ -2,9 +2,11 @@ package org.orbitfs.common.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,6 +23,7 @@ import org.orbitfs.common.ui.components.SettingsRow
 fun SessionSettingsPage(
     currentHost: SavedHost?,
     onUpdateSettings: (Boolean, Int, Int, Int) -> Unit,
+    onRemoveHost: (String) -> Unit,
     onBack: () -> Unit
 ) {
     val host = currentHost ?: return
@@ -33,6 +36,7 @@ fun SessionSettingsPage(
     var showThresholdDialog by remember { mutableStateOf(false) }
     var showTimeoutDialog by remember { mutableStateOf(false) }
     var showChunkSizeDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -97,8 +101,24 @@ fun SessionSettingsPage(
                     control = { Text("${currentAutoLoad}KB", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) }
                 )
             }
+
+            Spacer(modifier = Modifier.weight(1f))
             
-            Spacer(modifier = Modifier.height(40.dp))
+            Button(
+                onClick = { showDeleteConfirm = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(Icons.Rounded.Delete, contentDescription = null)
+                Spacer(Modifier.width(12.dp))
+                Text("Delete Node Connection", fontWeight = FontWeight.Bold)
+            }
+            
+            Spacer(modifier = Modifier.height(20.dp))
         }
 
         if (showThresholdDialog) {
@@ -145,6 +165,30 @@ fun SessionSettingsPage(
                         onUpdateSettings(isGuarded, currentTimeout, currentChunkSize, currentAutoLoad)
                     }
                     showChunkSizeDialog = false
+                }
+            )
+        }
+
+        if (showDeleteConfirm) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirm = false },
+                title = { Text("Delete Node") },
+                text = { Text("Are you sure you want to remove this node from your saved list? This will also disconnect the current session.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeleteConfirm = false
+                            onRemoveHost(host.id)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirm = false }) {
+                        Text("Cancel")
+                    }
                 }
             )
         }

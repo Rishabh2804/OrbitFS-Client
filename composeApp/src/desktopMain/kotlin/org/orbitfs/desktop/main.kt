@@ -17,18 +17,15 @@ import org.orbitfs.common.ui.FileBrowserViewModel
 import org.orbitfs.common.ui.SharedAppContent
 import org.orbitfs.common.ui.theme.OrbitFSTheme
 import org.orbitfs.common.util.PlatformContext
+import org.orbitfs.common.util.OrbitLogger
 import org.orbitfs.common.protocol.*
+import org.orbitfs.common.server.OrbitServerPatcher
 import org.orbitfs.server.*
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.swing.JFileChooser
 import java.util.function.BiFunction
-import kotlin.io.path.name
-import kotlin.io.path.isDirectory
-import kotlin.io.path.fileSize
-import kotlin.io.path.getLastModifiedTime
-import java.util.stream.Collectors
 
 fun main() = application {
     val scope = remember { CoroutineScope(Dispatchers.Main + SupervisorJob()) }
@@ -42,25 +39,19 @@ fun main() = application {
     var desktopServer by remember { mutableStateOf<OrbitServerImpl?>(null) }
 
     fun stopSatellite() {
+        OrbitLogger.d("DesktopMain", "STOPPING SATELLITE...")
         radar.unregisterService()
         scope.launch(Dispatchers.IO) {
             desktopServer?.stop()
             desktopServer = null
+            settingsRepository.setSatelliteEnabled(false)
         }
-        settingsRepository.setSatelliteEnabled(false)
     }
 
     fun startSatellite() {
-        val rootUri = settingsRepository.satelliteRootUri.value
-            ?: File(System.getProperty("user.home"), "OrbitFS_Shared").apply {
-                mkdirs()
-                val sampleDocs = File(this, "SampleDesktopDocs").apply { mkdirs() }
-                val sampleFile = File(sampleDocs, "welcome.txt")
-                if (!sampleFile.exists()) {
-                    sampleFile.writeText("Welcome to OrbitFS on Desktop!\nLocal peer-to-peer file sharing is active.\n")
-                }
-            }.absolutePath
-        settingsRepository.setSatelliteRootUri(rootUri)
+        // FORCE ROOT: /Users
+        val rootUri = "/Users"
+        settingsRepository.setSatelliteRootUri(rootUri, "Users")
 
         val port = settingsRepository.satellitePort.value
         val pilotName = settingsRepository.username.value
@@ -68,24 +59,26 @@ fun main() = application {
         val showHidden = settingsRepository.showHiddenFiles.value
 
         val absolutePath = Paths.get(rootUri).toAbsolutePath().normalize()
-        println("SATELLITE: Launching on Mac at $absolutePath")
+        OrbitLogger.d("DesktopMain", "LAUNCHING SATELLITE at $absolutePath (Port $port)")
 
         radar.registerService(port, pilotName, avatarId, settingsRepository.nodeId.value)
 
         scope.launch(Dispatchers.IO) {
             try {
+                if (!Files.exists(absolutePath)) Files.createDirectories(absolutePath)
+                
                 val server = OrbitServerImpl(port, absolutePath, !showHidden)
                 val sandboxField = OrbitServerImpl::class.java.getDeclaredField("sandbox")
                 sandboxField.isAccessible = true
                 val sandbox = sandboxField.get(server) as SandboxGuard
 
-                org.orbitfs.common.server.OrbitServerPatcher.patch(server, sandbox, !showHidden)
+                // Aggressive patcher
+                OrbitServerPatcher.patch(server, sandbox, !showHidden)
 
                 desktopServer = server
                 server.start()
             } catch (e: Exception) {
-                println("SATELLITE ERROR: ${e.message}")
-                e.printStackTrace()
+                OrbitLogger.e("DesktopMain", "SATELLITE FATAL ERROR", e)
             }
         }
         settingsRepository.setSatelliteEnabled(true)
@@ -106,11 +99,7 @@ fun main() = application {
             orbitRadar = radar,
             viewModelScope = scope,
             onToggleSatellite = {
-                if (settingsRepository.satelliteEnabled.value) {
-                    stopSatellite()
-                } else {
-                    startSatellite()
-                }
+                if (settingsRepository.satelliteEnabled.value) stopSatellite() else startSatellite()
             }
         )
     }
@@ -150,7 +139,7 @@ fun main() = application {
                 avatarId = avatarId,
                 satelliteState = satelliteState,
                 discoveredOrbiters = discoveredOrbiters,
-                onAddHost = { n, h, p -> viewModel.addHost(n, h, p) },
+                onAddHost = { n, h, p, nid -> viewModel.addHost(n, h, p, nid) },
                 onUpdateHost = { viewModel.updateHost(it) },
                 onRemoveHost = { viewModel.deleteHost(it) },
                 onConnect = { viewModel.connectToSavedHost(it) },
@@ -180,10 +169,11 @@ fun main() = application {
                         viewModel.updateSatelliteRoot(chooser.selectedFile.absolutePath, chooser.selectedFile.name)
                     }
                 },
-                onUpdateSatellitePort = { viewModel.updateSatellitePort(it) },
+                onUpdateSatelliteConfig = { port, root -> viewModel.updateSatelliteConfig(port, root) },
                 onStartRadar = { viewModel.startRadar() },
                 onStopRadar = { viewModel.stopRadar() },
-                onBackIntercept = { /* Desktop back N/A */ },
+                onResetIdentity = { viewModel.resetIdentity() },
+                onBackIntercept = { /* N/A */ },
                 settingsRepository = settingsRepository
             )
         }

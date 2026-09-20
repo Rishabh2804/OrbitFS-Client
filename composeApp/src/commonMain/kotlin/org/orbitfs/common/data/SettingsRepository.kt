@@ -11,6 +11,7 @@ expect class SettingsRepository(context: PlatformContext) {
     val satelliteEnabled: StateFlow<Boolean>
     val satellitePort: StateFlow<Int>
     val satelliteRootUri: StateFlow<String?>
+    val satelliteRootName: StateFlow<String?>
     val showHiddenFiles: StateFlow<Boolean>
     val notificationsEnabled: StateFlow<Boolean>
 
@@ -19,7 +20,8 @@ expect class SettingsRepository(context: PlatformContext) {
     fun updateThemeMode(mode: String)
     fun setSatelliteEnabled(enabled: Boolean)
     fun setSatellitePort(port: Int)
-    fun setSatelliteRootUri(uri: String?)
+    fun setSatelliteRootUri(uri: String?, name: String? = null)
     fun setShowHiddenFiles(show: Boolean)
     fun setNotificationsEnabled(enabled: Boolean)
+    fun resetIdentity()
 }

@@ -45,7 +45,7 @@ fun SharedAppContent(
     avatarId: String,
     satelliteState: SatelliteState,
     discoveredOrbiters: Set<OrbiterInfo>,
-    onAddHost: (String, String, Int) -> Unit,
+    onAddHost: (String, String, Int, String) -> Unit,
     onUpdateHost: (SavedHost) -> Unit,
     onRemoveHost: (String) -> Unit,
     onConnect: (SavedHost) -> Unit,
@@ -68,9 +68,11 @@ fun SharedAppContent(
     onDismissLargeDownload: () -> Unit,
     onToggleSatellite: () -> Unit,
     onPickSatelliteFolder: () -> Unit,
-    onUpdateSatellitePort: (Int) -> Unit,
+    onUpdateSatelliteConfig: (Int, String?) -> Unit,
     onStartRadar: () -> Unit,
     onStopRadar: () -> Unit,
+    onResetIdentity: () -> Unit = {},
+    onCheckPermissions: () -> Unit = {},
     onBackIntercept: ((() -> Boolean) -> Unit)? = null,
     settingsRepository: SettingsRepository? = null
 ) {
@@ -209,7 +211,7 @@ fun SharedAppContent(
                                 pilotAvatarId = avatarId,
                                 onBack = { hubPageIndex = 1 },
                                 onOrbiterClick = { info ->
-                                    onAddHost(info.name.removePrefix("OrbitFS-"), info.host, info.port)
+                                    onAddHost(info.name, info.host, info.port, info.nodeId)
                                     hubPageIndex = 1
                                 },
                                 onRefresh = { 
@@ -226,13 +228,18 @@ fun SharedAppContent(
                             onBack = { hubPageIndex = 1 },
                             onToggleServer = onToggleSatellite,
                             onPickFolder = onPickSatelliteFolder,
-                            onUpdatePort = onUpdateSatellitePort,
-                            onOrbiterClick = { /* Handled in radar */ }
+                            onUpdateConfig = onUpdateSatelliteConfig,
+                            onOrbiterClick = { info ->
+                                onAddHost(info.name, info.host, info.port, info.nodeId)
+                                hubPageIndex = 1
+                            },
+                            onPermissionStatusClick = onCheckPermissions
                         )
                         4 -> SettingsScreen(
                             themeMode = themeMode,
                             onBack = { hubPageIndex = 1 },
-                            onUpdateTheme = { settingsRepository?.updateThemeMode(it) }
+                            onUpdateTheme = { settingsRepository?.updateThemeMode(it) },
+                            onResetIdentity = onResetIdentity
                         )
                     }
                 }
@@ -254,8 +261,9 @@ fun SharedAppContent(
                                     else onOpenFile(file)
                                 },
                                 onItemLongClick = { file -> 
-                                    onSelectFile(file.path)
+                                    // Fix: Start multi-select THEN select the file
                                     if (!browserState.isMultiSelect) onToggleMultiSelect()
+                                    onSelectFile(file.path)
                                 },
                                 onItemSelectToggle = { onSelectFile(it.path) },
                                 onClearSelection = { onClearSelection() },
@@ -286,6 +294,11 @@ fun SharedAppContent(
                             SessionSettingsPage(
                                 currentHost = currentHost,
                                 onUpdateSettings = onUpdateActiveHostSettings,
+                                onRemoveHost = { id ->
+                                    onRemoveHost(id)
+                                    onDisconnect()
+                                    hubPageIndex = 1
+                                },
                                 onBack = { sessionPageIndex = 0 }
                             )
                         }
@@ -300,7 +313,7 @@ fun SharedAppContent(
                 showDialog = showAddNodeDialog,
                 onDismissRequest = { showAddNodeDialog = false },
                 onConfirm = { name, host, port ->
-                    onAddHost(name, host, port)
+                    onAddHost(name, host, port, "")
                     showAddNodeDialog = false
                 }
             )

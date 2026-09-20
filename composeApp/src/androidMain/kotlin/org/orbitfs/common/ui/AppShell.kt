@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import org.orbitfs.android.MainActivity
 import org.orbitfs.common.data.SavedHost
 import org.orbitfs.common.data.SettingsRepository
 import org.orbitfs.common.model.FileInfo
@@ -46,12 +47,19 @@ fun AndroidAppShell(
                     val uri = FileProvider.getUriForFile(context, "org.orbitfs.android.kmp.fileprovider", effect.file)
                     val intent = Intent(Intent.ACTION_VIEW).apply {
                         setDataAndType(uri, effect.mimeType)
-                        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     try {
-                        context.startActivity(Intent.createChooser(intent, "Open with"))
+                        context.startActivity(intent)
                     } catch (e: Exception) {
-                        Toast.makeText(context, "No app found to open this file", Toast.LENGTH_SHORT).show()
+                        try {
+                            val chooser = Intent.createChooser(intent, "Open with")
+                            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(chooser)
+                        } catch (e2: Exception) {
+                            Toast.makeText(context, "No app found to open this file", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
                 is UiEffect.ShareFile -> {
@@ -71,25 +79,24 @@ fun AndroidAppShell(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
             if (uri != null) {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-                val pathDisplay = uri.path?.substringAfterLast(":") ?: "Shared Folder"
-                viewModel.updateSatelliteRoot(uri.toString(), pathDisplay)
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                } catch (_: Exception) {}
+                viewModel.updateSatelliteRoot(uri.toString(), uri.path?.substringAfterLast(":") ?: "Shared Folder")
             }
         }
     )
 
-    // Back Handling: Store the lambda from the child
+    // Back Handling
     var backActionLambda by remember { mutableStateOf<(() -> Boolean)?>(null) }
 
     BackHandler(enabled = backActionLambda != null) {
         val handled = backActionLambda?.invoke() ?: false
         if (!handled) {
-            // If the common app didn't handle it (e.g. we are at root Hub),
-            // we let the system handle it (exit app)
-            backActionLambda = null // Disable handler so next back press exits
+            backActionLambda = null 
         }
     }
 
@@ -110,7 +117,7 @@ fun AndroidAppShell(
             avatarId = avatarId,
             satelliteState = satelliteState,
             discoveredOrbiters = discoveredOrbiters,
-            onAddHost = { n, h, p -> viewModel.addHost(n, h, p) },
+            onAddHost = { n, h, p, nid -> viewModel.addHost(n, h, p, nid) },
             onUpdateHost = { viewModel.updateHost(it) },
             onRemoveHost = { viewModel.deleteHost(it) },
             onConnect = { viewModel.connectToSavedHost(it) },
@@ -125,7 +132,7 @@ fun AndroidAppShell(
             onRefresh = { viewModel.refreshCurrentPath() },
             onToggleHidden = { viewModel.toggleHiddenFiles() },
             onCancelDownload = { viewModel.cancelDownload(it) },
-            onRetryDownload = { viewModel.retryDownload(it) },
+            onRetryDownload = { path -> viewModel.retryDownload(path) },
             onClearHistory = { viewModel.clearTransferHistory() },
             onSaveToDevice = { viewModel.downloadFile(it) },
             onShareFile = { viewModel.shareFile(it) },
@@ -133,9 +140,11 @@ fun AndroidAppShell(
             onDismissLargeDownload = { viewModel.dismissLargeDownload() },
             onToggleSatellite = { viewModel.toggleSatellite() },
             onPickSatelliteFolder = { folderPickerLauncher.launch(null) },
-            onUpdateSatellitePort = { viewModel.updateSatellitePort(it) },
+            onUpdateSatelliteConfig = { port, root -> viewModel.updateSatelliteConfig(port, root) },
             onStartRadar = { viewModel.startRadar() },
             onStopRadar = { viewModel.stopRadar() },
+            onResetIdentity = { viewModel.resetIdentity() },
+            onCheckPermissions = { (context as MainActivity).checkPermissions() },
             onBackIntercept = { backActionLambda = it },
             settingsRepository = settingsRepository
         )

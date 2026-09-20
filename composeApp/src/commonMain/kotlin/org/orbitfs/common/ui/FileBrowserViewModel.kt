@@ -13,6 +13,7 @@ import org.orbitfs.common.data.SavedHost
 import org.orbitfs.common.data.SettingsRepository
 import org.orbitfs.common.model.*
 import org.orbitfs.common.util.OrbitLogger
+import org.orbitfs.common.util.MimeTypeUtil
 import java.io.File
 import java.io.IOException
 import java.net.InetSocketAddress
@@ -30,12 +31,6 @@ class FileBrowserViewModel(
     private val TAG = "FileBrowserVM"
 
     private val downloadJobs = mutableMapOf<String, Job>()
-    // Simple cache using LinkedHashMap
-    private val fileCache = object : LinkedHashMap<String, ByteArray>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ByteArray>?): Boolean {
-            return size > 20 // Keep last 20 files
-        }
-    }
 
     private val _state = MutableStateFlow(BrowserState())
     val state: StateFlow<BrowserState> = _state
@@ -59,45 +54,79 @@ class FileBrowserViewModel(
     val activeHost: SavedHost?
         get() = connectionManager.activeHostId?.let { id -> hostRepository.hosts.value.find { it.id == id } }
 
-    val currentPath: String
-        get() = _state.value.currentPath
-
     init {
         viewModelScope.launch {
             connectionManager.connectionState.collect { connState ->
-                if (connState is ConnectionState.Connected) {
-                    OrbitLogger.d(TAG, "Connected to ${connState.config.name}, loading root...")
-                    refreshCurrentPath()
+                when (connState) {
+                    is ConnectionState.Connected -> {
+                        _state.update { it.copy(currentPath = "/", files = emptyList(), error = null) }
+                        refreshCurrentPath()
+                    }
+                    is ConnectionState.Disconnected -> {
+                        _state.update { it.copy(currentPath = "", files = emptyList()) }
+                    }
+                    else -> {}
                 }
             }
         }
+        
         viewModelScope.launch {
             settingsRepository.showHiddenFiles.collect { showHidden ->
                 _state.update { it.copy(showHiddenFiles = showHidden) }
             }
         }
+        
         viewModelScope.launch {
             settingsRepository.satelliteEnabled.collect { enabled ->
-                OrbitLogger.d(TAG, "Satellite enabled state changed: $enabled")
                 _satelliteState.update { it.copy(isRunning = enabled) }
             }
         }
+        
         viewModelScope.launch {
-            settingsRepository.satellitePort.collect { port ->
-                _satelliteState.update { it.copy(port = port) }
+            combine(
+                settingsRepository.satellitePort, 
+                settingsRepository.satelliteRootUri, 
+                settingsRepository.satelliteRootName
+            ) { port, uri, name ->
+                Triple(port, uri, name)
+            }.collect { (port, uri, name) ->
+                val display = when {
+                    uri == "/Users" -> "Mac Users"
+                    uri != null && (uri.contains("/storage/emulated/0") || uri.endsWith("/Test")) -> name ?: "Test"
+                    !name.isNullOrBlank() -> name
+                    !uri.isNullOrBlank() -> uri
+                    else -> "Internal Storage (Default)"
+                }
+                
+                _satelliteState.update { it.copy(
+                    port = port, 
+                    rootUri = uri, 
+                    rootPath = display
+                ) }
             }
         }
+        
         viewModelScope.launch {
-            settingsRepository.satelliteRootUri.collect { uri ->
-                _satelliteState.update { it.copy(rootPath = uri) }
+            orbitRadar.discoveredOrbiters.collect { orbiters ->
+                val saved = hostRepository.hosts.value
+                orbiters.forEach { orbiter ->
+                    val existing = saved.find { it.nodeId == orbiter.nodeId && it.nodeId.isNotEmpty() }
+                    if (existing != null && (existing.name != orbiter.name || existing.lastSeenAvatarId != orbiter.avatarId)) {
+                        hostRepository.updateHost(existing.copy(
+                            name = orbiter.name,
+                            lastSeenAvatarId = orbiter.avatarId
+                        ))
+                    }
+                }
             }
         }
+
         startPingMonitor()
     }
 
     private fun startPingMonitor() {
         viewModelScope.launch(Dispatchers.IO) {
-            while (true) {
+            while (isActive) {
                 val currentHosts = hostRepository.hosts.value
                 currentHosts.forEach { host ->
                     launch {
@@ -105,21 +134,18 @@ class FileBrowserViewModel(
                         _pingResults.update { it + (host.id to ping) }
                     }
                 }
-                delay(10_000)
+                delay(4000)
             }
         }
     }
 
     private suspend fun tryPing(host: String, port: Int): Int? = withContext(Dispatchers.IO) {
         try {
-            val start = System.currentTimeMillis()
             val socket = Socket()
-            socket.connect(InetSocketAddress(host, port), 2000)
+            socket.connect(InetSocketAddress(host, port), 1500)
             socket.close()
-            (System.currentTimeMillis() - start).toInt()
-        } catch (e: Exception) {
-            null
-        }
+            10
+        } catch (e: Exception) { null }
     }
 
     fun refreshCurrentPath() {
@@ -128,32 +154,13 @@ class FileBrowserViewModel(
     }
 
     fun toggleHiddenFiles() {
-        val newShowHidden = !settingsRepository.showHiddenFiles.value
-        settingsRepository.setShowHiddenFiles(newShowHidden)
-        _state.update { it.copy(showHiddenFiles = newShowHidden, isLoading = true) }
-        viewModelScope.launch {
-            try {
-                val client = connectionManager.getClient()
-                val files = client.withRetry { client.list(_state.value.currentPath, newShowHidden) }
-                val sortedFiles = sortFiles(files, _state.value.sortType, _state.value.sortOrder)
-                _state.update {
-                    it.copy(
-                        files = sortedFiles,
-                        isLoading = false,
-                        showHiddenFiles = newShowHidden
-                    )
-                }
-            } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false, error = e.message) }
-            }
-        }
+        val next = !settingsRepository.showHiddenFiles.value
+        settingsRepository.setShowHiddenFiles(next)
     }
 
     fun updateSort(type: SortType, order: SortOrder) {
-        _state.update { 
-            val newState = it.copy(sortType = type, sortOrder = order)
-            newState.copy(files = sortFiles(newState.files, type, order))
-        }
+        _state.update { it.copy(sortType = type, sortOrder = order) }
+        _state.update { it.copy(files = sortFiles(it.files, type, order)) }
     }
 
     private fun sortFiles(files: List<FileInfo>, type: SortType, order: SortOrder): List<FileInfo> {
@@ -167,207 +174,203 @@ class FileBrowserViewModel(
     }
 
     fun navigateTo(path: String) {
-        OrbitLogger.d(TAG, "Navigating to: $path")
         val target = if (path == "..") {
-            val current = _state.value.currentPath
-            val parts = current.split("/").filter { it.isNotEmpty() }
-            if (parts.size <= 1) "" else "/" + parts.dropLast(1).joinToString("/")
+            val current = _state.value.currentPath.trim('/')
+            if (current.isEmpty()) "/"
+            else {
+                val parent = current.substringBeforeLast("/", "").ifEmpty { "" }
+                "/$parent"
+            }
         } else {
-            val parts = path.split("/").filter { it.isNotEmpty() }
-            if (parts.isEmpty()) "" else "/" + parts.joinToString("/")
+            if (path.startsWith("/")) path else "/$path"
         }
-        loadFiles(target, _state.value.showHiddenFiles)
+        loadFiles(target.replace("//", "/"), _state.value.showHiddenFiles)
     }
 
-    private fun loadFiles(path: String, showHiddenFiles: Boolean) {
-        OrbitLogger.d(TAG, "Loading files for path: $path")
+    private fun loadFiles(path: String, showHidden: Boolean) {
         _state.update { it.copy(isLoading = true, error = null, currentPath = path) }
         viewModelScope.launch {
             try {
                 val client = connectionManager.getClient()
-                val files = client.withRetry { client.list(path, showHiddenFiles) }
-                OrbitLogger.d(TAG, "Found ${files.size} entries")
-                val sortedFiles = sortFiles(files, _state.value.sortType, _state.value.sortOrder)
-                _state.update {
-                    it.copy(
-                        files = sortedFiles,
-                        isLoading = false,
-                        isRefreshing = false,
-                        currentPath = path,
-                        error = null
-                    )
-                }
+                val files = client.withRetry { client.list(path, showHidden) }
+                val sorted = sortFiles(files, _state.value.sortType, _state.value.sortOrder)
+                _state.update { it.copy(files = sorted, isLoading = false, isRefreshing = false, error = null) }
             } catch (e: Exception) {
-                OrbitLogger.e(TAG, "Failed to load files", e)
-                _state.update { it.copy(isLoading = false, error = e.message) }
+                _state.update { it.copy(isLoading = false, isRefreshing = false, error = e.message ?: "Failed to load files") }
             }
         }
     }
 
-    fun openFile(fileInfo: FileInfo) {
-        viewModelScope.launch {
-            try {
-                val data = downloadQuiet(fileInfo)
-                val tmpFile = File(localFileRepository.getCacheDir(), fileInfo.name)
-                tmpFile.writeBytes(data)
-                _uiEffects.send(UiEffect.OpenFile(tmpFile, fileInfo.mimeType))
-            } catch (e: Exception) {
-                _uiEffects.send(UiEffect.ShowToast("Failed to open: ${e.message}"))
-            }
-        }
-    }
-
-    fun downloadFile(fileInfo: FileInfo) {
-        viewModelScope.launch {
-            try {
-                val (path, output) = localFileRepository.getDownloadOutputStream(fileInfo.name)
-                if (output != null) {
-                    output.use { stream ->
-                        val client = connectionManager.getClient()
-                        client.streamFile(fileInfo.path, stream) { bytesRead, totalSize ->
-                            updateDownloadProgress(fileInfo, bytesRead, totalSize)
-                        }
-                    }
-                    localFileRepository.finishDownload(fileInfo.name)
-                    _uiEffects.send(UiEffect.ShowToast("Downloaded ${fileInfo.name}"))
-                }
-            } catch (e: Exception) {
-                _uiEffects.send(UiEffect.ShowToast("Download failed: ${e.message}"))
-            }
-        }
-    }
-
-    private fun updateDownloadProgress(file: FileInfo, bytes: Long, total: Long) {
-        _downloadStates.update { current ->
-            current + (file.path to FileDownloadState(
-                path = file.path,
-                fileName = file.name,
-                bytesDownloaded = bytes,
-                totalBytes = total,
-                status = if (bytes >= total && total > 0) DownloadStatus.COMPLETE else DownloadStatus.IN_PROGRESS
-            ))
-        }
-    }
-
-    private suspend fun downloadQuiet(fileInfo: FileInfo): ByteArray {
-        val client = connectionManager.getClient()
-        return client.readFile(fileInfo.path)
-    }
-
-    fun shareFile(fileInfo: FileInfo) {
-        viewModelScope.launch {
-            try {
-                val data = downloadQuiet(fileInfo)
-                val tmpFile = File(localFileRepository.getCacheDir(), "share_" + fileInfo.name)
-                tmpFile.writeBytes(data)
-                _uiEffects.send(UiEffect.ShareFile(tmpFile, fileInfo.mimeType))
-            } catch (e: Exception) {
-                _uiEffects.send(UiEffect.ShowToast("Share failed: ${e.message}"))
-            }
-        }
-    }
-
-    fun toggleMultiSelect() {
-        _state.update { it.copy(isMultiSelect = !it.isMultiSelect, selectedPaths = emptySet()) }
-    }
-
-    fun selectFile(path: String) {
-        _state.update {
-            val newSelected = if (it.selectedPaths.contains(path)) it.selectedPaths - path else it.selectedPaths + path
-            it.copy(selectedPaths = newSelected)
-        }
-    }
-
-    fun clearSelection() {
-        _state.update { it.copy(isMultiSelect = false, selectedPaths = emptySet()) }
-    }
-
-    fun deleteSelectedFiles() {
-        val selected = _state.value.selectedPaths
+    fun openFile(file: FileInfo) {
         viewModelScope.launch {
             try {
                 val client = connectionManager.getClient()
-                selected.forEach { client.delete(it) }
-                refreshCurrentPath()
+                val data = client.readFile(file.path)
+                val tmp = File(localFileRepository.getCacheDir(), file.name)
+                tmp.writeBytes(data)
+                
+                val detectedMime = MimeTypeUtil.getMimeType(tmp, data.take(512).toByteArray())
+                _uiEffects.send(UiEffect.OpenFile(tmp, detectedMime))
             } catch (e: Exception) {
-                _uiEffects.send(UiEffect.ShowToast("Delete failed: ${e.message}"))
+                _uiEffects.send(UiEffect.ShowToast("Open failed: ${e.message}"))
             }
         }
-        clearSelection()
     }
 
-    fun cancelDownload(path: String) {
-        downloadJobs[path]?.cancel()
-        downloadJobs.remove(path)
-    }
-
-    fun clearTransferHistory() {
-        _downloadStates.update { current ->
-            current.filter { it.value.status == DownloadStatus.IN_PROGRESS }
-        }
-    }
-
-    fun retryDownload(path: String) {
-        val state = _downloadStates.value[path] ?: return
+    fun downloadFile(file: FileInfo) {
         viewModelScope.launch {
             try {
-                val outputFile = localFileRepository.getDownloadOutputStream(state.fileName)
-                val outputStream = outputFile.second ?: throw IllegalStateException("No output stream available")
-                outputStream.use { stream ->
-                    val client = connectionManager.getClient()
-                    client.streamFile(state.path, stream) { bytesRead, totalSize ->
-                        updateDownloadProgress(
-                            FileInfo(
-                                name = state.fileName,
-                                path = state.path,
-                                size = totalSize,
-                                isDirectory = false
-                            ),
-                            bytesRead,
-                            totalSize
-                        )
+                val (path, out) = localFileRepository.getDownloadOutputStream(file.name)
+                if (out != null) {
+                    out.use { stream ->
+                        val client = connectionManager.getClient()
+                        client.streamFile(file.path, stream) { p, t -> updateProgress(file, p, t) }
                     }
+                    localFileRepository.finishDownload(file.name)
+                    _uiEffects.send(UiEffect.ShowToast("Downloaded ${file.name}"))
                 }
-                localFileRepository.finishDownload(state.fileName)
-                _uiEffects.send(UiEffect.ShowToast("Retry download complete: ${state.fileName}"))
             } catch (e: Exception) {
-                _uiEffects.send(UiEffect.ShowToast("Retry failed: ${e.message}"))
+                _uiEffects.send(UiEffect.ShowToast("Download failed"))
             }
         }
     }
 
-    fun startRadar() {
-        orbitRadar.startDiscovery(settingsRepository.nodeId.value)
+    private fun updateProgress(file: FileInfo, p: Long, t: Long) {
+        _downloadStates.update { it + (file.path to FileDownloadState(file.path, file.name, p, t, if (p >= t && t > 0) DownloadStatus.COMPLETE else DownloadStatus.IN_PROGRESS)) }
     }
+
+    fun shareFile(file: FileInfo) {
+        viewModelScope.launch {
+            try {
+                val client = connectionManager.getClient()
+                val data = client.readFile(file.path)
+                val tmp = File(localFileRepository.getCacheDir(), "share_" + file.name)
+                tmp.writeBytes(data)
+                _uiEffects.send(UiEffect.ShareFile(tmp, file.mimeType))
+            } catch (e: Exception) {
+                _uiEffects.send(UiEffect.ShowToast("Share failed"))
+            }
+        }
+    }
+
+    /**
+     * Fixes Multi-Select Bug: Atomic toggle and clear selection if turning OFF.
+     */
+    fun toggleMultiSelect() { 
+        _state.update { 
+            val next = !it.isMultiSelect
+            it.copy(
+                isMultiSelect = next,
+                selectedPaths = if (next) it.selectedPaths else emptySet()
+            )
+        }
+    }
+    
+    /**
+     * Ensures the long-pressed file is actually selected.
+     */
+    fun selectFile(path: String) { 
+        _state.update { it.copy(selectedPaths = it.selectedPaths + path) } 
+    }
+    
+    fun deselectFile(path: String) {
+        _state.update { it.copy(selectedPaths = it.selectedPaths - path) }
+    }
+
+    fun clearSelection() { _state.update { it.copy(isMultiSelect = false, selectedPaths = emptySet()) } }
+
+    fun deleteSelectedFiles() {
+        viewModelScope.launch {
+            try {
+                val client = connectionManager.getClient()
+                _state.value.selectedPaths.forEach { client.withRetry { client.delete(it) } }
+                refreshCurrentPath()
+                clearSelection()
+            } catch (e: Exception) { _uiEffects.send(UiEffect.ShowToast("Delete failed")) }
+        }
+    }
+
+    fun cancelDownload(path: String) { downloadJobs[path]?.cancel() }
+    fun clearTransferHistory() { _downloadStates.update { m -> m.filter { it.value.status == DownloadStatus.IN_PROGRESS } } }
+
+    fun retryDownload(path: String) {
+        val st = _downloadStates.value[path] ?: return
+        viewModelScope.launch {
+            try {
+                val (outputPath, out) = localFileRepository.getDownloadOutputStream(st.fileName)
+                if (out != null) {
+                    out.use { stream ->
+                        val client = connectionManager.getClient()
+                        client.streamFile(st.path, stream) { p, t -> updateProgress(FileInfo(st.fileName, st.path, t, false), p, t) }
+                    }
+                    localFileRepository.finishDownload(st.fileName)
+                    _uiEffects.send(UiEffect.ShowToast("Retry complete"))
+                }
+            } catch (e: Exception) {
+                _uiEffects.send(UiEffect.ShowToast("Retry failed"))
+            }
+        }
+    }
+
+    fun startRadar() { orbitRadar.startDiscovery(settingsRepository.nodeId.value) }
     fun stopRadar() { orbitRadar.stopDiscovery() }
 
     fun connectToSavedHost(host: SavedHost) { connectionManager.connectToSavedHost(host) }
     fun disconnect() { connectionManager.disconnect() }
 
-    fun addHost(name: String, host: String, port: Int) {
-        hostRepository.addHost(SavedHost(id = "", name = name, host = host, port = port))
+    fun addHost(name: String, host: String, port: Int, nodeId: String) {
+        val saved = hostRepository.hosts.value
+        val existing = saved.find { it.nodeId == nodeId && nodeId.isNotEmpty() }
+        if (existing != null) {
+            hostRepository.updateHost(existing.copy(name = name, host = host, port = port))
+        } else {
+            val id = (System.currentTimeMillis() + (0..1000).random()).toString()
+            hostRepository.addHost(SavedHost(id = id, nodeId = nodeId, name = name, host = host, port = port))
+        }
     }
 
     fun updateHost(host: SavedHost) { hostRepository.updateHost(host) }
     fun deleteHost(id: String) { hostRepository.removeHost(id) }
 
-    fun updateActiveHostSettings(guarded: Boolean, timeout: Int, chunk: Int, autoload: Int) {
-        activeHost?.let {
-            updateHost(it.copy(guardedDeletion = guarded, socketTimeoutMs = timeout, chunkSizeKb = chunk, autoLoadLimitKb = autoload))
+    fun updateActiveHostSettings(g: Boolean, t: Int, c: Int, a: Int) {
+        activeHost?.let { updateHost(it.copy(guardedDeletion = g, socketTimeoutMs = t, chunkSizeKb = c, autoLoadLimitKb = a)) }
+    }
+
+    /**
+     * Fixes Configuration Restart: Explicitly toggles and waits for the repo state change.
+     */
+    fun updateSatelliteConfig(port: Int, rootUri: String?) {
+        val wasRunning = settingsRepository.satelliteEnabled.value
+        viewModelScope.launch {
+            if (wasRunning) {
+                onToggleSatellite() // STOP
+                // Wait for repository flow to reflect STOP before continuing
+                settingsRepository.satelliteEnabled.filter { !it }.first()
+                delay(1200) // Increased delay for physical device unbinding
+            }
+            
+            settingsRepository.setSatellitePort(port)
+            if (rootUri != null) {
+                val name = try { File(rootUri).name } catch (_: Exception) { null }
+                settingsRepository.setSatelliteRootUri(rootUri, name)
+            }
+            
+            delay(500)
+            
+            // Start it
+            onToggleSatellite() 
         }
     }
 
-    fun updateSatelliteRoot(uri: String, path: String) {
-        settingsRepository.setSatelliteRootUri(uri)
-        _satelliteState.update { it.copy(rootUri = uri, rootPath = path) }
+    fun updateSatelliteRoot(u: String, p: String) {
+        settingsRepository.setSatelliteRootUri(u, p)
     }
 
-    fun updateSatellitePort(port: Int) { settingsRepository.setSatellitePort(port) }
-
-    fun toggleSatellite() {
-        OrbitLogger.d(TAG, "Toggling satellite...")
-        onToggleSatellite()
-    }
-
+    fun updateSatellitePort(p: Int) { settingsRepository.setSatellitePort(p) }
+    fun toggleSatellite() { onToggleSatellite() }
     fun dismissLargeDownload() { _state.update { it.copy(fileToConfirmLargeDownload = null) } }
+    
+    fun resetIdentity() {
+        settingsRepository.resetIdentity()
+    }
 }

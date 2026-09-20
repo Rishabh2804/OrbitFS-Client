@@ -4,6 +4,7 @@ import android.app.*
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.Environment
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
 import org.orbitfs.android.MainActivity
@@ -37,7 +38,6 @@ class OrbitFSServerService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         println("OrbitService: onStartCommand ${intent?.action}")
         
-        // Ensure foreground immediately
         startForeground(NOTIFICATION_ID, createNotification("Starting Satellite..."))
 
         val port = intent?.getIntExtra(EXTRA_PORT, -1)?.takeIf { it > 0 } 
@@ -47,10 +47,7 @@ class OrbitFSServerService : Service() {
             ACTION_START -> startServer(port)
             ACTION_STOP -> stopServer(port)
             ACTION_STOP_ALL -> stopAll()
-            else -> {
-                 // Default to start if no action
-                 startServer(port)
-            }
+            else -> startServer(port)
         }
         return START_STICKY
     }
@@ -67,30 +64,20 @@ class OrbitFSServerService : Service() {
         val nodeId = settingsRepository.nodeId.value
         
         val rootPath = try {
-            val customUri = settingsRepository.satelliteRootUri.value
-            val dir = if (!customUri.isNullOrBlank()) {
-                val f = File(customUri)
-                if (f.exists() && f.isDirectory) f else File(filesDir, "shared")
-            } else {
-                File(filesDir, "shared")
-            }.apply { 
-                mkdirs() 
-                val sampleDir = File(this, "SampleDocs").apply { mkdirs() }
-                val sampleFile = File(sampleDir, "welcome.txt")
-                if (!sampleFile.exists()) {
-                    sampleFile.writeText("Welcome to OrbitFS on Android!\nLocal peer-to-peer file sharing is active.\n")
-                }
+            // FORCE NEW DEFAULTS
+            val dir = File(Environment.getExternalStorageDirectory(), "Test").apply {
+                if (!exists()) mkdirs()
             }
             Paths.get(dir.absolutePath).toAbsolutePath().normalize()
         } catch (e: Exception) {
-             println("OrbitService: Root path failure")
+             println("OrbitService: Root path failure: ${e.message}")
              stopSelf()
              return
         }
 
         serviceScope.launch {
             try {
-                println("OrbitService: Virtualizing core for port $port")
+                println("OrbitService: FORCED ROOT for port $port at $rootPath")
                 val server = SatelliteServerLauncher.create(port, rootPath, !showHidden)
                 activeServers[port] = server
                 

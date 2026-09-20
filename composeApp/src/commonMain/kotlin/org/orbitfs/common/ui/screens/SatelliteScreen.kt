@@ -1,9 +1,9 @@
 package org.orbitfs.common.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -13,18 +13,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.orbitfs.common.data.SavedHost
 import org.orbitfs.common.model.OrbiterInfo
 import org.orbitfs.common.model.SatelliteState
 import org.orbitfs.common.ui.theme.ColorStatusGreen
-import org.orbitfs.common.ui.components.SettingsGroup
-import org.orbitfs.common.ui.components.SettingsRow
 import org.orbitfs.common.ui.components.OrbiterRadarCard
+import org.orbitfs.common.ui.components.SatelliteConfigDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,10 +36,11 @@ fun SatelliteScreen(
     onBack: () -> Unit,
     onToggleServer: () -> Unit,
     onPickFolder: () -> Unit,
-    onUpdatePort: (Int) -> Unit,
-    onOrbiterClick: (OrbiterInfo) -> Unit
+    onUpdateConfig: (Int, String?) -> Unit,
+    onOrbiterClick: (OrbiterInfo) -> Unit,
+    onPermissionStatusClick: () -> Unit = {}
 ) {
-    var showPortDialog by remember { mutableStateOf(false) }
+    var showConfigDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -59,59 +60,67 @@ fun SatelliteScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = 24.dp, vertical = 8.dp)
         ) {
-            // Status Card
             StatusCard(
-                isRunning = state.isRunning,
+                isRunning = state.isRunning, 
                 onToggle = onToggleServer
             )
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Configuration Group
-            SettingsGroup(title = "Local Node Configuration", icon = Icons.Rounded.Settings) {
-                SettingsRow(
-                    title = "Shared Directory",
-                    subtitle = state.rootPath ?: "No folder selected",
-                    onClick = { if (!state.isRunning) onPickFolder() },
-                    control = {
-                        Icon(
-                            Icons.Rounded.Folder, 
-                            contentDescription = null, 
-                            tint = if (state.rootPath != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                        )
-                    }
-                )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                SettingsRow(
-                    title = "Broadcast Port",
-                    subtitle = "Current: ${state.port}",
-                    onClick = { if (!state.isRunning) showPortDialog = true },
-                    control = {
-                        Text(
-                            "${state.port}",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = if (!state.isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+            // Unified Configuration Button
+            Button(
+                onClick = { showConfigDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                shape = RoundedCornerShape(16.dp),
+                contentPadding = PaddingValues(16.dp)
+            ) {
+                Icon(Icons.Rounded.Settings, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = if (state.isRunning) "Edit Configuration" else "Configure Satellite",
+                    fontWeight = FontWeight.Bold
                 )
             }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // Current root path info card
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = state.rootPath ?: "Internal Storage (Default)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Connectivity Details
             if (state.isRunning) {
+                Spacer(modifier = Modifier.height(24.dp))
                 ConnectivityCard(port = state.port, token = state.pairingToken ?: "NO-TOKEN")
-            } else {
-                InfoNote("Launch your satellite to allow other devices to browse files on this device.")
             }
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Embedded Radar Section
+            // Hardware Permission Section
+            PermissionGuardSection(onClick = onPermissionStatusClick)
+
+            Spacer(modifier = Modifier.height(32.dp))
+
             RadarSection(
                 discoveredOrbiters = discoveredOrbiters,
                 savedHosts = savedHosts,
@@ -121,10 +130,17 @@ fun SatelliteScreen(
             Spacer(modifier = Modifier.height(40.dp))
         }
 
-        if (showPortDialog) {
-            // Port logic
-            onUpdatePort(9090)
-            showPortDialog = false
+        if (showConfigDialog) {
+            SatelliteConfigDialog(
+                initialPort = state.port,
+                initialPath = state.rootUri,
+                onDismiss = { showConfigDialog = false },
+                onConfirm = { port, _ ->
+                    onUpdateConfig(port, state.rootUri)
+                    showConfigDialog = false
+                },
+                onPickFolder = onPickFolder
+            )
         }
     }
 }
@@ -147,7 +163,7 @@ fun StatusCard(isRunning: Boolean, onToggle: () -> Unit) {
                     .clip(RoundedCornerShape(24.dp))
                     .background(
                         if (isRunning) ColorStatusGreen.copy(alpha = 0.1f)
-                        else MaterialTheme.colorScheme.error.copy(alpha = 0.1f)
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -155,7 +171,7 @@ fun StatusCard(isRunning: Boolean, onToggle: () -> Unit) {
                     Icons.Rounded.Router,
                     contentDescription = null,
                     modifier = Modifier.size(40.dp),
-                    tint = if (isRunning) ColorStatusGreen else MaterialTheme.colorScheme.error
+                    tint = if (isRunning) ColorStatusGreen else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -185,7 +201,7 @@ fun StatusCard(isRunning: Boolean, onToggle: () -> Unit) {
                 ),
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             ) {
-                Icon(Icons.Rounded.PowerSettingsNew, contentDescription = null)
+                Icon(if (isRunning) Icons.Rounded.PowerSettingsNew else Icons.Rounded.RocketLaunch, contentDescription = null)
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(if (isRunning) "Stop Satellite" else "Launch Satellite", fontWeight = FontWeight.Bold)
             }
@@ -225,6 +241,41 @@ fun DetailRow(label: String, value: String) {
 }
 
 @Composable
+fun PermissionGuardSection(onClick: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.GppGood, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Hardware Permissions", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Surface(
+            onClick = onClick,
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    "Ensure 'All Files Access' and 'Notifications' are enabled for maximum stability.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Check / Request Permissions",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun RadarSection(
     discoveredOrbiters: Set<OrbiterInfo>,
     savedHosts: List<SavedHost>,
@@ -244,7 +295,7 @@ fun RadarSection(
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 discoveredOrbiters.forEach { orbiter ->
-                    val isAlreadySaved = savedHosts.any { it.host == orbiter.host }
+                    val isAlreadySaved = savedHosts.any { it.nodeId == orbiter.nodeId }
                     OrbiterRadarCard(orbiter = orbiter, isAlreadySaved = isAlreadySaved, onClick = { onOrbiterClick(orbiter) })
                 }
             }

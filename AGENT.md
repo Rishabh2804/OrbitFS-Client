@@ -32,42 +32,18 @@ Components such as the `ConnectionManager` (handling the TCP socket state and re
 
 ---
 
-## 3. Architectural Deep-Dive
+### 3. Architectural Deep-Dive
 
-### The "Ghost Launcher" (Critical)
-The most complex engineering challenge arose when trying to run `orbitfs-core-0.1.0.jar` inside the Android runtime (ART). While modern Android toolchains support Java 21 syntax via desugaring, ART entirely lacks the runtime infrastructure for Java 21 Virtual Threads. Specifically, calling `Executors.newVirtualThreadPerTaskExecutor()` throws an immediate runtime exception on Android:
+#### The "Ghost Launcher" (Critical)
+The most complex engineering challenge arose when trying to run `orbitfs-core-0.1.0.jar` inside the Android runtime (ART). While modern Android toolchains support Java 21 syntax via desugaring, ART entirely lacks the runtime infrastructure for Java 21 Virtual Threads. Specifically, calling `Executors.newVirtualThreadPerTaskExecutor()` throws an immediate runtime exception on Android.
 
-```
-java.lang.UnsupportedOperationException: Method not implemented: java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()
-    at java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor(Executors.java:123)
-    at com.orbitfs.core.OrbitServerImpl.<init>(OrbitServerImpl.java:45)
-```
+To circumvent this, we engineered the **Ghost Launcher** pattern in `SatelliteServerLauncher`. Using `sun.misc.Unsafe`, we bypass the constructor entirely, preventing the virtual thread setup from ever being initialized. We then manually inject safe components and handlers using reflection.
 
-Because the constructor of `OrbitServerImpl` directly invokes this factory method, standard instantiation via `new OrbitServerImpl(...)` crashes the Android process instantly.
+#### UDP Radar Discovery
+Standard mDNS proved fragile. We moved to a custom **UDP Broadcast Beacon on Port 9999**. Both devices broadcast a structured packet: `ORBITFS_BEACON|Name|Port|Avatar|NodeId`. 
 
-To circumvent this limitation without modifying the compiled backend core JAR, we engineered the **Ghost Launcher** pattern in `SatelliteServerLauncher`. Using `sun.misc.Unsafe`, we obtain a reference to the low-level allocator and bypass the class constructor entirely:
-
-```kotlin
-val unsafeField = sun.misc.Unsafe::class.java.getDeclaredField("theUnsafe")
-unsafeField.isAccessible = true
-val unsafe = unsafeField.get(null) as sun.misc.Unsafe
-
-// Bypass constructor allocation entirely to avoid VirtualThread execution setup
-val serverInstance = unsafe.allocateInstance(OrbitServerImpl::class.java) as OrbitServerImpl
-```
-
-Because the constructor never runs, the unsupported `VirtualThreadPerTaskExecutor` is never invoked. We then use deep reflection to manually inject fields and wire up a standard platform-backed `CachedThreadPool` or a dedicated `FixedThreadPool` optimized for mobile cores, substituting the runtime behavior transparently. Fields such as `executor`, `port`, and `requestHandlers` are targeted via their obfuscated or internal names and modified directly in memory, bringing the "Ghost" instance to full functionality.
-
-### UDP Radar vs. mDNS
-Standard discovery via Apple/Google mDNS (using `NsdManager` or JmDNS) proved unviable for cross-platform robustness. Many enterprise routers, public access points, and carrier-grade NAT configurations aggressively filter multicast packets (IP address `224.0.0.251`). To overcome this, OrbitFS abandoned mDNS in favor of a robust custom UDP Broadcast Beacon system operating on Port 9999.
-
-Every active Satellite runs a background coroutine loop that broadcasts a structured UTF-8 string to the local subnet broadcast address (e.g., `255.255.255.255`). The packet layout is string-delimited to prevent parsing overhead:
-
-```
-ORBITFS_BEACON|SatelliteName|PortNumber|AvatarIdentifier|UniqueNodeUUID
-```
-
-The `OrbitRadar` client component binds a UDP socket to port 9999 with `SO_REUSEADDR` enabled, listening for these incoming datagrams. When a packet arrives, it extracts the fields, updates an internal map of active nodes, and handles stale entries using a 5-second dead-man timer. This approach completely bypasses mDNS filtering and guarantees zero-config visibility.
+#### Identity & Session Security
+Every installation generates a unique, persistent **Node ID** (alphanumeric string). This ID allows devices to recognize each other even if their IP address or Pilot Name changes, preventing duplicate entries in the Radar. We also implemented a **Session-Lock** logic: if a connection is severed, the UI immediately blocks navigation and returns the user to the home screen.
 
 ### Isolated Storage
 Security within a peer-to-peer file server is paramount. The server uses a component called `SandboxGuard` to ensure that clients cannot traverse outside the designated `shared` directory. Before any file operation (`READ`, `WRITE`, `DELETE`) is executed, the `SandboxGuard` performs strict canonical path validation:
@@ -123,9 +99,14 @@ Hardening the background synchronization service across modern API levels requir
 
 ---
 
-## 5. Current Roadblocks (Active Bugs - High & Medium Severity)
+## 5. Current Roadblocks (Active Bugs)
 
-*No active high or medium severity roadblocks. All 3 critical bugs from previous sessions have been resolved and verified with automated test coverage.*
+### High Priority
+*   **Android Content URIs**: The backend core relies on `java.nio.file.Path`, which cannot directly handle Android `content://` URIs (SAF). Currently, selecting a non-standard folder on Android falls back to internal storage.
+*   **Mac Discovery Performance**: Mac satellites are occasionally slow to appear on the Android Radar if they were running before the Android app launched.
+
+### Low Priority
+*   **Desktop Window Resizing**: Compose Desktop UI elements occasionally misalign when the window is scaled too small.
 
 ---
 

@@ -1,0 +1,10 @@
+OrbitFS Collaboration Log
+========================
+Initial Agent: Ready to collaborate.
+Current Focus:
+- Fixing Mac identity/name generation.
+- Fixing Mac file browser root and file opening.
+- Implementing 'Delete Node' in Session Settings.
+- Investigating Android file intent handling (Gallery vs In-app).
+
+Parallel Agent: Please post your status or findings below.

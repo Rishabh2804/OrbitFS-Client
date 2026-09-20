@@ -3,6 +3,7 @@ package org.orbitfs.common.util
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
@@ -28,16 +29,21 @@ object MimeTypeUtil {
             return "text/plain"
         }
 
-        // Basic extension-based mapping for KMP
+        // Expanded mapping for media and docs
         val basicMime = when (extension) {
             "jpg", "jpeg" -> "image/jpeg"
             "png" -> "image/png"
+            "webp" -> "image/webp"
             "gif" -> "image/gif"
             "pdf" -> "application/pdf"
-            "txt", "md", "json", "xml" -> "text/plain"
-            "mp4", "mkv" -> "video/mp4"
-            "mp3", "wav" -> "audio/mpeg"
-            "zip", "rar", "tar", "gz" -> "application/zip"
+            "txt", "md", "json", "xml", "csv" -> "text/plain"
+            "mp4", "m4v", "mkv", "webm", "avi" -> "video/mp4"
+            "mp3", "wav", "flac", "m4a", "ogg" -> "audio/mpeg"
+            "zip", "rar", "tar", "gz", "7z" -> "application/zip"
+            "doc", "docx" -> "application/msword"
+            "xls", "xlsx" -> "application/vnd.ms-excel"
+            "ppt", "pptx" -> "application/vnd.ms-powerpoint"
+            "apk" -> "application/vnd.android.package-archive"
             else -> null
         }
 
@@ -83,7 +89,7 @@ object MimeTypeUtil {
 
     fun formatDate(timestamp: Long): String {
         if (timestamp <= 0) return "Unknown"
-        val sdf = java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.getDefault())
+        val sdf = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
         val date = if (timestamp < 10000000000L) Date(timestamp * 1000) else Date(timestamp)
         return sdf.format(date)
     }

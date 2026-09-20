@@ -41,8 +41,6 @@ fun RadarScreen(
 ) {
     val myAvatar = PilotAvatar.getById(pilotAvatarId)
     
-    // Auto-Discovery started in SharedApp.kt via DisposableEffect
-    
     Scaffold(
         topBar = {
             TopAppBar(
@@ -128,10 +126,8 @@ fun RadarScreen(
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(discoveredOrbiters.toList(), key = { "${it.host}:${it.port}" }) { orbiter ->
-                        val isAlreadySaved = savedHosts.any { 
-                            it.host == orbiter.host && it.port == orbiter.port 
-                        }
+                    items(discoveredOrbiters.toList(), key = { it.nodeId }) { orbiter ->
+                        val isAlreadySaved = savedHosts.any { it.nodeId == orbiter.nodeId }
                         OrbiterRadarCard(
                             orbiter = orbiter, 
                             isAlreadySaved = isAlreadySaved,
