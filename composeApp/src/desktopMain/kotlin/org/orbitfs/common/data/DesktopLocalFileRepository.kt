@@ -43,7 +43,7 @@ class DesktopLocalFileRepository : LocalFileRepository {
         }
     }
 
-    override suspend fun getDownloadOutputStream(fileName: String): Pair<String?, OutputStream?> {
+    override suspend fun getDownloadOutputStream(fileName: String, targetDirUri: String?): Pair<String?, OutputStream?> {
         val dir = File(System.getProperty("user.home"), "Downloads/OrbitFS").apply { mkdirs() }
         val file = File(dir, fileName)
         return file.absolutePath to file.outputStream()

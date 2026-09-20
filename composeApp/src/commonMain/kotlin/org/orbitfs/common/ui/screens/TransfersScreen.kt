@@ -32,7 +32,8 @@ fun TransfersScreen(
     onBack: () -> Unit,
     onClearHistory: () -> Unit,
     onCancelTransfer: (String) -> Unit,
-    onRetryTransfer: (FileDownloadState) -> Unit
+    onRetryTransfer: (FileDownloadState) -> Unit,
+    onOpenDownloadedFile: (FileDownloadState) -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     
@@ -75,7 +76,7 @@ fun TransfersScreen(
             if (selectedTab == 0) {
                 ActiveTransfersList(activeTransfers, onCancelTransfer)
             } else {
-                HistoryTransfersList(historyTransfers, onRetryTransfer)
+                HistoryTransfersList(historyTransfers, onRetryTransfer, onOpenDownloadedFile)
             }
         }
     }
@@ -98,7 +99,11 @@ fun ActiveTransfersList(transfers: List<FileDownloadState>, onCancel: (String) -
 }
 
 @Composable
-fun HistoryTransfersList(transfers: List<FileDownloadState>, onRetry: (FileDownloadState) -> Unit) {
+fun HistoryTransfersList(
+    transfers: List<FileDownloadState>, 
+    onRetry: (FileDownloadState) -> Unit,
+    onOpen: (FileDownloadState) -> Unit
+) {
     if (transfers.isEmpty()) {
         EmptyState("No transfer history", Icons.Rounded.History)
     } else {
@@ -107,7 +112,7 @@ fun HistoryTransfersList(transfers: List<FileDownloadState>, onRetry: (FileDownl
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(transfers, key = { it.path }) { state ->
-                HistoryTransferItem(state, onRetry)
+                HistoryTransferItem(state, onRetry, onOpen)
             }
         }
     }
@@ -145,7 +150,11 @@ fun ActiveTransferItem(state: FileDownloadState, onCancel: (String) -> Unit) {
 }
 
 @Composable
-fun HistoryTransferItem(state: FileDownloadState, onRetry: (FileDownloadState) -> Unit) {
+fun HistoryTransferItem(
+    state: FileDownloadState, 
+    onRetry: (FileDownloadState) -> Unit,
+    onOpen: (FileDownloadState) -> Unit
+) {
     val color = when (state.status) {
         DownloadStatus.COMPLETE -> ColorStatusGreen
         DownloadStatus.FAILED -> MaterialTheme.colorScheme.error
@@ -154,6 +163,7 @@ fun HistoryTransferItem(state: FileDownloadState, onRetry: (FileDownloadState) -
     }
 
     Surface(
+        onClick = { if (state.status == DownloadStatus.COMPLETE) onOpen(state) },
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
@@ -183,6 +193,8 @@ fun HistoryTransferItem(state: FileDownloadState, onRetry: (FileDownloadState) -
                 IconButton(onClick = { onRetry(state) }) {
                     Icon(Icons.Rounded.Refresh, contentDescription = "Retry", tint = MaterialTheme.colorScheme.primary)
                 }
+            } else {
+                Icon(Icons.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
             }
         }
     }

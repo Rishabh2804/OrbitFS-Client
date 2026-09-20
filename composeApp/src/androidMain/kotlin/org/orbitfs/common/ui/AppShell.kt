@@ -100,6 +100,26 @@ fun AndroidAppShell(
         }
     }
 
+    var pendingDownloadFile by remember { mutableStateOf<FileInfo?>(null) }
+    
+    val downloadFolderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+        onResult = { uri ->
+            if (uri != null && pendingDownloadFile != null) {
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                    viewModel.downloadFile(pendingDownloadFile!!, uri.toString())
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Permission failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+                pendingDownloadFile = null
+            }
+        }
+    )
+
     OrbitFSTheme(
         darkTheme = when (themeMode) {
             "Dark Space" -> true
@@ -134,7 +154,14 @@ fun AndroidAppShell(
             onCancelDownload = { viewModel.cancelDownload(it) },
             onRetryDownload = { path -> viewModel.retryDownload(path) },
             onClearHistory = { viewModel.clearTransferHistory() },
-            onSaveToDevice = { viewModel.downloadFile(it) },
+            onSaveToDevice = { 
+                if (it.name == "DUMMY") {
+                    Toast.makeText(context, "Feature coming soon!", Toast.LENGTH_SHORT).show()
+                } else {
+                    pendingDownloadFile = it
+                    downloadFolderPickerLauncher.launch(null)
+                }
+            },
             onShareFile = { viewModel.shareFile(it) },
             onUpdateActiveHostSettings = { gd, to, cs, al -> viewModel.updateActiveHostSettings(gd, to, cs, al) },
             onDismissLargeDownload = { viewModel.dismissLargeDownload() },
@@ -146,7 +173,8 @@ fun AndroidAppShell(
             onResetIdentity = { viewModel.resetIdentity() },
             onCheckPermissions = { (context as MainActivity).checkPermissions() },
             onBackIntercept = { backActionLambda = it },
-            settingsRepository = settingsRepository
+            settingsRepository = settingsRepository,
+            onOpenLocalFile = { viewModel.openLocalFile(it) }
         )
     }
 }

@@ -30,14 +30,12 @@ import org.orbitfs.common.ui.components.SatelliteConfigDialog
 @Composable
 fun SatelliteScreen(
     state: SatelliteState,
-    discoveredOrbiters: Set<OrbiterInfo>,
-    savedHosts: List<SavedHost>,
+    username: String,
     pilotAvatarId: String,
     onBack: () -> Unit,
     onToggleServer: () -> Unit,
     onPickFolder: () -> Unit,
     onUpdateConfig: (Int, String?) -> Unit,
-    onOrbiterClick: (OrbiterInfo) -> Unit,
     onPermissionStatusClick: () -> Unit = {}
 ) {
     var showConfigDialog by remember { mutableStateOf(false) }
@@ -45,7 +43,12 @@ fun SatelliteScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Satellite Mode", fontWeight = FontWeight.Bold) },
+                title = { 
+                    Column {
+                        Text("Satellite Mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(username, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
@@ -118,14 +121,6 @@ fun SatelliteScreen(
 
             // Hardware Permission Section
             PermissionGuardSection(onClick = onPermissionStatusClick)
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            RadarSection(
-                discoveredOrbiters = discoveredOrbiters,
-                savedHosts = savedHosts,
-                onOrbiterClick = onOrbiterClick
-            )
 
             Spacer(modifier = Modifier.height(40.dp))
         }

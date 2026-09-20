@@ -10,7 +10,7 @@ interface LocalFileRepository {
     fun shareFile(file: File, mimeType: String)
     
     // Download specific
-    suspend fun getDownloadOutputStream(fileName: String): Pair<String?, OutputStream?>
+    suspend fun getDownloadOutputStream(fileName: String, targetDirUri: String? = null): Pair<String?, OutputStream?>
     fun finishDownload(id: String)
     fun deleteDownload(id: String)
 }

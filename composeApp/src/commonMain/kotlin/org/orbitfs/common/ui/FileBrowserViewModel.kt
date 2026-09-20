@@ -203,8 +203,14 @@ class FileBrowserViewModel(
 
     /**
      * Fixes File Opening: Uses streaming for reliability and memory efficiency.
+     * Implements 50MB warning threshold.
      */
     fun openFile(file: FileInfo) {
+        if (file.size > 50 * 1024 * 1024) { // 50MB
+            _state.update { it.copy(fileToConfirmLargeDownload = file) }
+            return
+        }
+        
         viewModelScope.launch {
             try {
                 val tmp = File(localFileRepository.getCacheDir(), file.name)
@@ -213,7 +219,7 @@ class FileBrowserViewModel(
                     client.streamFile(file.path, output) { _, _ -> }
                 }
                 
-                // Read a small chunk for Mime detection if needed, or use extension
+                // Read a small chunk for Mime detection if needed
                 val dataPreview = if (tmp.exists() && tmp.length() > 0) {
                     tmp.inputStream().use { input ->
                         val buf = ByteArray(512)
@@ -230,10 +236,28 @@ class FileBrowserViewModel(
         }
     }
 
-    fun downloadFile(file: FileInfo) {
+    /**
+     * Opens a file that was already downloaded (from history).
+     */
+    fun openLocalFile(state: FileDownloadState) {
+        val file = File(state.path) // Path in state is local path after download
+        if (file.exists()) {
+            val mime = MimeTypeUtil.getMimeType(file)
+            viewModelScope.launch {
+                _uiEffects.send(UiEffect.OpenFile(file, mime))
+            }
+        } else {
+            viewModelScope.launch {
+                _uiEffects.send(UiEffect.ShowToast("Local file not found"))
+            }
+        }
+    }
+
+    fun downloadFile(file: FileInfo, targetDirUri: String? = null) {
         viewModelScope.launch {
             try {
-                val (path, out) = localFileRepository.getDownloadOutputStream(file.name)
+                // localFileRepository implementation should handle the Uri if provided
+                val (path, out) = localFileRepository.getDownloadOutputStream(file.name, targetDirUri)
                 if (out != null) {
                     out.use { stream ->
                         val client = connectionManager.getClient()

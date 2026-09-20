@@ -23,8 +23,10 @@ import org.orbitfs.common.ui.components.SettingsRow
 @Composable
 fun SettingsScreen(
     themeMode: String,
+    notificationsEnabled: Boolean,
     onBack: () -> Unit,
     onUpdateTheme: (String) -> Unit,
+    onToggleNotifications: (Boolean) -> Unit,
     onResetIdentity: () -> Unit = {},
     onCheckPermissions: () -> Unit = {}
 ) {
@@ -65,7 +67,19 @@ fun SettingsScreen(
                     subtitle = "Request File Access & Notifications",
                     onClick = onCheckPermissions,
                     control = {
-                        Icon(Icons.Rounded.GppGood, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+                    }
+                )
+                
+                SettingsRow(
+                    title = "Enable Notifications",
+                    subtitle = "Show progress for ongoing transfers",
+                    onClick = { onToggleNotifications(!notificationsEnabled) },
+                    control = {
+                        Switch(
+                            checked = notificationsEnabled,
+                            onCheckedChange = { onToggleNotifications(it) }
+                        )
                     }
                 )
             }

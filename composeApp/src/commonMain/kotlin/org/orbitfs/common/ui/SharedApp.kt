@@ -74,7 +74,8 @@ fun SharedAppContent(
     onResetIdentity: () -> Unit = {},
     onCheckPermissions: () -> Unit = {},
     onBackIntercept: ((() -> Boolean) -> Unit)? = null,
-    settingsRepository: SettingsRepository? = null
+    settingsRepository: SettingsRepository? = null,
+    onOpenLocalFile: (FileDownloadState) -> Unit = {}
 ) {
     val isConnected = connectionState is ConnectionState.Connected
     
@@ -89,6 +90,9 @@ fun SharedAppContent(
 
     val themeModeFlow = remember(settingsRepository) { settingsRepository?.themeMode ?: MutableStateFlow("System Default") }
     val themeMode by themeModeFlow.collectAsState()
+    
+    val notificationsEnabledFlow = remember(settingsRepository) { settingsRepository?.notificationsEnabled ?: MutableStateFlow(true) }
+    val notificationsEnabled by notificationsEnabledFlow.collectAsState()
 
     val handleBack = {
         when {
@@ -222,8 +226,7 @@ fun SharedAppContent(
                         }
                         3 -> SatelliteScreen(
                             state = satelliteState,
-                            discoveredOrbiters = discoveredOrbiters,
-                            savedHosts = hosts,
+                            username = username,
                             pilotAvatarId = avatarId,
                             onBack = { hubPageIndex = 1 },
                             onToggleServer = onToggleSatellite,
@@ -237,8 +240,10 @@ fun SharedAppContent(
                         )
                         4 -> SettingsScreen(
                             themeMode = themeMode,
+                            notificationsEnabled = notificationsEnabled,
                             onBack = { hubPageIndex = 1 },
                             onUpdateTheme = { settingsRepository?.updateThemeMode(it) },
+                            onToggleNotifications = { settingsRepository?.setNotificationsEnabled(it) },
                             onResetIdentity = onResetIdentity,
                             onCheckPermissions = onCheckPermissions
                         )
@@ -262,14 +267,13 @@ fun SharedAppContent(
                                     else onOpenFile(file)
                                 },
                                 onItemLongClick = { file -> 
-                                    // Fix: Start multi-select THEN select the file
                                     if (!browserState.isMultiSelect) onToggleMultiSelect()
                                     onSelectFile(file.path)
                                 },
                                 onItemSelectToggle = { onSelectFile(it.path) },
                                 onClearSelection = { onClearSelection() },
-                                onUploadFile = { },
-                                onNewDir = { },
+                                onUploadFile = { onSaveToDevice(FileInfo("DUMMY", "", 0, false)) /* Reusing trigger for toast */ },
+                                onNewDir = { onSaveToDevice(FileInfo("DUMMY", "", 0, false)) },
                                 onViewStat = { selectedFileInfoForDetails = it },
                                 onSaveToDevice = { onSaveToDevice(it) },
                                 onShareFile = { onShareFile(it) },
@@ -288,7 +292,8 @@ fun SharedAppContent(
                             onBack = { sessionPageIndex = 0 },
                             onClearHistory = { onClearHistory() },
                             onCancelTransfer = { onCancelDownload(it) },
-                            onRetryTransfer = { state -> onRetryDownload(state.path) }
+                            onRetryTransfer = { state -> onRetryDownload(state.path) },
+                            onOpenDownloadedFile = onOpenLocalFile
                         )
                         2 -> {
                             val currentHost = hosts.find { it.host == connectionState.config.host && it.port == connectionState.config.port }
