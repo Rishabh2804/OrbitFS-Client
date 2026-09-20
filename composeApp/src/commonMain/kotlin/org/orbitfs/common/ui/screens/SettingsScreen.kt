@@ -25,7 +25,8 @@ fun SettingsScreen(
     themeMode: String,
     onBack: () -> Unit,
     onUpdateTheme: (String) -> Unit,
-    onResetIdentity: () -> Unit = {}
+    onResetIdentity: () -> Unit = {},
+    onCheckPermissions: () -> Unit = {}
 ) {
     var showThemeDialog by remember { mutableStateOf(false) }
     var showResetConfirm by remember { mutableStateOf(false) }
@@ -44,7 +45,7 @@ fun SettingsScreen(
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(32.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             SettingsGroup(title = "Appearance", icon = Icons.Rounded.Palette) {
@@ -54,6 +55,17 @@ fun SettingsScreen(
                     onClick = { showThemeDialog = true },
                     control = {
                         Text(themeMode, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    }
+                )
+            }
+
+            SettingsGroup(title = "Hardware & System", icon = Icons.Rounded.SettingsInputComponent) {
+                SettingsRow(
+                    title = "System Permissions",
+                    subtitle = "Request File Access & Notifications",
+                    onClick = onCheckPermissions,
+                    control = {
+                        Icon(Icons.Rounded.GppGood, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     }
                 )
             }
@@ -138,8 +150,7 @@ fun ThemeSelectionDialog(
                                 role = Role.RadioButton
                             )
                             .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                        verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(
                             selected = (mode == currentMode),
                             onClick = null

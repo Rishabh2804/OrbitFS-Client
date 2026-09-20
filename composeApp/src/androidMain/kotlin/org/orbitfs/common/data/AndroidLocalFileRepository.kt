@@ -2,6 +2,7 @@ package org.orbitfs.common.data
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import org.orbitfs.common.util.PlatformContext
@@ -41,7 +42,8 @@ class AndroidLocalFileRepository(private val platformContext: PlatformContext) :
     }
 
     override suspend fun getDownloadOutputStream(fileName: String): Pair<String?, OutputStream?> {
-        val dir = File(context.getExternalFilesDir(null), "downloads").apply { mkdirs() }
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val dir = File(downloadsDir, "OrbitFS").apply { mkdirs() }
         val file = File(dir, fileName)
         return file.absolutePath to file.outputStream()
     }

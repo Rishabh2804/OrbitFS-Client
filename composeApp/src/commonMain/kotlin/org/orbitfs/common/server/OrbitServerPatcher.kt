@@ -15,7 +15,7 @@ import kotlin.io.path.*
  * Aggressive RPC Handler Patcher for OrbitServerImpl.
  * 
  * Provides robust implementations for ALL major operations.
- * Fixes the "Path Doubling" bug by intelligently distinguishing absolute handles.
+ * Fixes Path Doubling and "Server Code 1" errors.
  */
 object OrbitServerPatcher {
 
@@ -25,7 +25,7 @@ object OrbitServerPatcher {
 
     /**
      * Resilient path resolution.
-     * Fixes doubling by strictly checking if the input is already an absolute path.
+     * Prevents doubling by strictly checking if the input is already an absolute path.
      */
     fun resolveSafely(sandbox: SandboxGuard, rawPath: String?): Path {
         val input = rawPath?.trim() ?: ""
@@ -33,25 +33,28 @@ object OrbitServerPatcher {
 
         val rootStr = sandbox.root.toString()
 
-        // 1. If it's already an absolute path and STARTS with root, return it immediately.
-        // This is the CRITICAL FIX for the doubling bug observed in logs.
-        if (input.startsWith(rootStr)) {
-             return Paths.get(input).normalize()
+        // 1. Check for Absolute Paths (Fixes Doubling)
+        // If it already contains the root string, it's an absolute handle from the server logic.
+        if (input.startsWith(rootStr) || input.contains(rootStr)) {
+             try {
+                 val candidate = Paths.get(input).normalize()
+                 if (candidate.startsWith(sandbox.root)) return candidate
+             } catch (_: Exception) {}
         }
 
-        // 2. Otherwise treat as a relative request from the UI.
+        // 2. Relative Resolution (UI requests)
         val relative = input.trimStart('/')
         val resolved = sandbox.root.resolve(relative).normalize()
         
         if (!resolved.startsWith(sandbox.root)) {
-            log("SECURITY: Blocked escape attempt for path: '$rawPath'")
+            log("SECURITY: Path '$rawPath' resolved OUTSIDE root '${sandbox.root}'")
             throw SecurityException("Access outside sandbox forbidden")
         }
         return resolved
     }
 
     fun patch(server: OrbitServerImpl, sandbox: SandboxGuard, hideHidden: Boolean) {
-        log("Hardening server handlers at root: ${sandbox.root}")
+        log("Hardening server handlers. Root: ${sandbox.root}")
         
         val handlersField = OrbitServerImpl::class.java.getDeclaredField("handlers")
         handlersField.isAccessible = true
@@ -63,42 +66,23 @@ object OrbitServerPatcher {
             RPCResponse(req.requestId(), RPCStatus.OK, 0, 0, null, "PONG", null, null)
         }
 
-        // OPEN
-        handlers[RpcMethod.OPEN] = BiFunction { request, engine ->
+        // OPEN -> Simplified to always return absolute path as handle
+        handlers[RpcMethod.OPEN] = BiFunction { request, _ ->
             val path = request.path()
             log("REQ: OPEN '$path'")
             try {
                 val target = resolveSafely(sandbox, path)
-                if (Files.isDirectory(target)) {
-                    log("RES: OPEN DIR SUCCESS -> $target")
-                    RPCResponse(request.requestId(), RPCStatus.OK, 0, 0, target.toString(), null, null, null)
-                } else {
-                    try {
-                        val fd = engine.open(target.toString())
-                        log("RES: OPEN CORE FD SUCCESS -> $fd")
-                        RPCResponse(request.requestId(), RPCStatus.OK, 0, 0, fd, null, null, null)
-                    } catch (e: Exception) {
-                        log("RES: OPEN CORE FAILED (${e.message}). Using PATH as handle.")
-                        RPCResponse(request.requestId(), RPCStatus.OK, 0, 0, target.toString(), null, null, null)
-                    }
-                }
+                log("RES: OPEN SUCCESS -> Handle: $target")
+                RPCResponse(request.requestId(), RPCStatus.OK, 0, 0, target.toString(), null, null, null)
             } catch (e: Exception) {
                 log("RES: OPEN ERROR -> ${e.message}")
                 RPCResponse.error(request.requestId(), 1)
             }
         }
 
-        // CLOSE
-        handlers[RpcMethod.CLOSE] = BiFunction { request, engine ->
-            val fd = request.fd()
-            try {
-                if (!fd.isNullOrEmpty() && !fd.startsWith("/") && !fd.contains(File.separator)) {
-                    engine.close(fd)
-                }
-                RPCResponse(request.requestId(), RPCStatus.OK, 0, 0, null, null, null, null)
-            } catch (e: Exception) {
-                RPCResponse.error(request.requestId(), 1)
-            }
+        // CLOSE -> NOP for path handles
+        handlers[RpcMethod.CLOSE] = BiFunction { request, _ ->
+            RPCResponse(request.requestId(), RPCStatus.OK, 0, 0, null, null, null, null)
         }
 
         // LIST
@@ -131,7 +115,6 @@ object OrbitServerPatcher {
                         }
                         .toList()
                 }
-                log("RES: LIST SUCCESS -> Found ${entries.size} items")
                 RPCResponse(
                     request.requestId(), RPCStatus.OK, 0, 0, null, null, null,
                     entries.sortedWith(compareByDescending<RPCResponse.RPCEntry> { it.isDir() }.thenBy { it.name().lowercase() })
@@ -142,27 +125,15 @@ object OrbitServerPatcher {
             }
         }
 
-        // READ
-        handlers[RpcMethod.READ] = BiFunction { request, engine ->
+        // READ -> Direct file reading only
+        handlers[RpcMethod.READ] = BiFunction { request, _ ->
             val fd = request.fd()
             val offset = request.offset()
             val count = request.count()
-            log("REQ: READ FD='$fd' OFFSET=$offset COUNT=$count")
+            log("REQ: READ Handle='$fd' OFFSET=$offset COUNT=$count")
             try {
-                val bytes: ByteArray = if (!fd.isNullOrEmpty() && (fd.startsWith("/") || fd.contains(File.separator))) {
-                    readDirectly(sandbox, fd, offset, count)
-                } else if (!fd.isNullOrEmpty()) {
-                    try {
-                        engine.read(fd, offset, count)
-                    } catch (e: Exception) {
-                        log("RES: READ CORE FAILED. Trying path fallback.")
-                        readDirectly(sandbox, fd, offset, count)
-                    }
-                } else {
-                    readDirectly(sandbox, request.path(), offset, count)
-                }
-
-                log("RES: READ SUCCESS -> Sent ${bytes.size} bytes")
+                val bytes = readDirectly(sandbox, fd, offset, count)
+                log("RES: READ SUCCESS -> ${bytes.size} bytes")
                 val encoded = Base64.getEncoder().encodeToString(bytes)
                 RPCResponse(request.requestId(), RPCStatus.OK, 0, bytes.size.toLong(), null, encoded, null, null)
             } catch (e: Exception) {
@@ -172,20 +143,16 @@ object OrbitServerPatcher {
         }
 
         // WRITE
-        handlers[RpcMethod.WRITE] = BiFunction { request, engine ->
+        handlers[RpcMethod.WRITE] = BiFunction { request, _ ->
             val fd = request.fd()
             val b64 = request.dataBase64()
             val data = if (b64 != null) Base64.getDecoder().decode(b64) else byteArrayOf()
-            log("REQ: WRITE FD='$fd' BYTES=${data.size}")
+            log("REQ: WRITE Handle='$fd' BYTES=${data.size}")
             try {
-                if (!fd.isNullOrEmpty() && (fd.startsWith("/") || fd.contains(File.separator))) {
-                    val target = resolveSafely(sandbox, fd)
-                    RandomAccessFile(target.toFile(), "rw").use { raf ->
-                        raf.seek(request.offset())
-                        raf.write(data)
-                    }
-                } else if (!fd.isNullOrEmpty()) {
-                    engine.write(fd, request.offset(), data)
+                val target = resolveSafely(sandbox, fd)
+                RandomAccessFile(target.toFile(), "rw").use { raf ->
+                    raf.seek(request.offset())
+                    raf.write(data)
                 }
                 RPCResponse(request.requestId(), RPCStatus.OK, 0, data.size.toLong(), null, null, null, null)
             } catch (e: Exception) {
@@ -236,10 +203,7 @@ object OrbitServerPatcher {
 
     private fun readDirectly(sandbox: SandboxGuard, raw: String?, offset: Long, count: Int): ByteArray {
         val target = try { resolveSafely(sandbox, raw) } catch (_: Exception) { return byteArrayOf() }
-        if (!Files.exists(target) || Files.isDirectory(target)) {
-            log("DIRECT READ FAILED: Not a file: $target")
-            return byteArrayOf()
-        }
+        if (!Files.exists(target) || Files.isDirectory(target)) return byteArrayOf()
         
         return try {
             RandomAccessFile(target.toFile(), "r").use { raf ->
@@ -250,7 +214,7 @@ object OrbitServerPatcher {
                 if (read <= 0) byteArrayOf() else if (read < len) buf.copyOf(read) else buf
             }
         } catch (e: Exception) {
-            log("DIRECT READ FATAL ERROR: ${e.message}")
+            log("DIRECT READ FATAL: ${e.message}")
             byteArrayOf()
         }
     }

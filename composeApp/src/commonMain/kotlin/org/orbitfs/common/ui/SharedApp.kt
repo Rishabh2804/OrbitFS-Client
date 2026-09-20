@@ -239,7 +239,8 @@ fun SharedAppContent(
                             themeMode = themeMode,
                             onBack = { hubPageIndex = 1 },
                             onUpdateTheme = { settingsRepository?.updateThemeMode(it) },
-                            onResetIdentity = onResetIdentity
+                            onResetIdentity = onResetIdentity,
+                            onCheckPermissions = onCheckPermissions
                         )
                     }
                 }

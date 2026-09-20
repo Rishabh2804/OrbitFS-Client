@@ -201,15 +201,28 @@ class FileBrowserViewModel(
         }
     }
 
+    /**
+     * Fixes File Opening: Uses streaming for reliability and memory efficiency.
+     */
     fun openFile(file: FileInfo) {
         viewModelScope.launch {
             try {
-                val client = connectionManager.getClient()
-                val data = client.readFile(file.path)
                 val tmp = File(localFileRepository.getCacheDir(), file.name)
-                tmp.writeBytes(data)
+                tmp.outputStream().use { output ->
+                    val client = connectionManager.getClient()
+                    client.streamFile(file.path, output) { _, _ -> }
+                }
                 
-                val detectedMime = MimeTypeUtil.getMimeType(tmp, data.take(512).toByteArray())
+                // Read a small chunk for Mime detection if needed, or use extension
+                val dataPreview = if (tmp.exists() && tmp.length() > 0) {
+                    tmp.inputStream().use { input ->
+                        val buf = ByteArray(512)
+                        val read = input.read(buf)
+                        if (read > 0) buf.copyOf(read) else byteArrayOf()
+                    }
+                } else byteArrayOf()
+                
+                val detectedMime = MimeTypeUtil.getMimeType(tmp, dataPreview)
                 _uiEffects.send(UiEffect.OpenFile(tmp, detectedMime))
             } catch (e: Exception) {
                 _uiEffects.send(UiEffect.ShowToast("Open failed: ${e.message}"))
@@ -230,7 +243,7 @@ class FileBrowserViewModel(
                     _uiEffects.send(UiEffect.ShowToast("Downloaded ${file.name}"))
                 }
             } catch (e: Exception) {
-                _uiEffects.send(UiEffect.ShowToast("Download failed"))
+                _uiEffects.send(UiEffect.ShowToast("Download failed: ${e.message}"))
             }
         }
     }
@@ -242,10 +255,11 @@ class FileBrowserViewModel(
     fun shareFile(file: FileInfo) {
         viewModelScope.launch {
             try {
-                val client = connectionManager.getClient()
-                val data = client.readFile(file.path)
                 val tmp = File(localFileRepository.getCacheDir(), "share_" + file.name)
-                tmp.writeBytes(data)
+                tmp.outputStream().use { output ->
+                    val client = connectionManager.getClient()
+                    client.streamFile(file.path, output) { _, _ -> }
+                }
                 _uiEffects.send(UiEffect.ShareFile(tmp, file.mimeType))
             } catch (e: Exception) {
                 _uiEffects.send(UiEffect.ShowToast("Share failed"))
@@ -254,7 +268,7 @@ class FileBrowserViewModel(
     }
 
     /**
-     * Fixes Multi-Select Bug: Atomic toggle and clear selection if turning OFF.
+     * Fixes Multi-Select Bug: Toggle selection state.
      */
     fun toggleMultiSelect() { 
         _state.update { 
@@ -266,24 +280,21 @@ class FileBrowserViewModel(
         }
     }
     
-    /**
-     * Ensures the long-pressed file is actually selected.
-     */
     fun selectFile(path: String) { 
-        _state.update { it.copy(selectedPaths = it.selectedPaths + path) } 
+        _state.update { 
+            val current = it.selectedPaths
+            it.copy(selectedPaths = if (current.contains(path)) current - path else current + path) 
+        } 
     }
     
-    fun deselectFile(path: String) {
-        _state.update { it.copy(selectedPaths = it.selectedPaths - path) }
-    }
-
     fun clearSelection() { _state.update { it.copy(isMultiSelect = false, selectedPaths = emptySet()) } }
 
     fun deleteSelectedFiles() {
         viewModelScope.launch {
             try {
                 val client = connectionManager.getClient()
-                _state.value.selectedPaths.forEach { client.withRetry { client.delete(it) } }
+                val pathsToDelete = _state.value.selectedPaths.toList()
+                pathsToDelete.forEach { client.withRetry { client.delete(it) } }
                 refreshCurrentPath()
                 clearSelection()
             } catch (e: Exception) { _uiEffects.send(UiEffect.ShowToast("Delete failed")) }
