@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.launch
 import org.orbitfs.common.model.DownloadStatus
 import org.orbitfs.common.model.FileDownloadState
 import org.orbitfs.common.ui.theme.*
@@ -38,7 +41,8 @@ fun TransfersScreen(
     onOpenDownloadedFile: (FileDownloadState) -> Unit = {},
     onDeleteHistoryItem: (String, Boolean) -> Unit = { _, _ -> }
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(pageCount = { 2 })
+    val coroutineScope = rememberCoroutineScope()
     var selectedDetailItem by remember { mutableStateOf<FileDownloadState?>(null) }
     var itemToDelete by remember { mutableStateOf<FileDownloadState?>(null) }
     
@@ -55,7 +59,7 @@ fun TransfersScreen(
                     }
                 },
                 actions = {
-                    if (selectedTab == 1 && historyTransfers.isNotEmpty()) {
+                    if (pagerState.currentPage == 1 && historyTransfers.isNotEmpty()) {
                         IconButton(onClick = onClearHistory) {
                             Icon(Icons.Rounded.DeleteSweep, contentDescription = "Clear History")
                         }
@@ -65,29 +69,34 @@ fun TransfersScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            TabRow(selectedTabIndex = selectedTab) {
+            TabRow(selectedTabIndex = pagerState.currentPage) {
                 Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
+                    selected = pagerState.currentPage == 0,
+                    onClick = { coroutineScope.launch { pagerState.animateScrollToPage(0) } },
                     text = { Text("Active (${activeTransfers.size})") }
                 )
                 Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
+                    selected = pagerState.currentPage == 1,
+                    onClick = { coroutineScope.launch { pagerState.animateScrollToPage(1) } },
                     text = { Text("History (${historyTransfers.size})") }
                 )
             }
 
-            if (selectedTab == 0) {
-                ActiveTransfersList(activeTransfers, onCancelTransfer)
-            } else {
-                HistoryTransfersList(
-                    transfers = historyTransfers,
-                    onRetry = onRetryTransfer,
-                    onOpen = onOpenDownloadedFile,
-                    onShowInfo = { selectedDetailItem = it },
-                    onDelete = { itemToDelete = it }
-                )
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            ) { page ->
+                if (page == 0) {
+                    ActiveTransfersList(activeTransfers, onCancelTransfer)
+                } else {
+                    HistoryTransfersList(
+                        transfers = historyTransfers,
+                        onRetry = onRetryTransfer,
+                        onOpen = onOpenDownloadedFile,
+                        onShowInfo = { selectedDetailItem = it },
+                        onDelete = { itemToDelete = it }
+                    )
+                }
             }
         }
 
