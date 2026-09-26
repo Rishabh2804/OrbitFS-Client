@@ -232,10 +232,6 @@ fun SharedAppContent(
                             onToggleServer = onToggleSatellite,
                             onPickFolder = onPickSatelliteFolder,
                             onUpdateConfig = onUpdateSatelliteConfig,
-                            onOrbiterClick = { info ->
-                                onAddHost(info.name, info.host, info.port, info.nodeId)
-                                hubPageIndex = 1
-                            },
                             onPermissionStatusClick = onCheckPermissions
                         )
                         4 -> SettingsScreen(

@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="OrbitRadarTest[desktop]" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-15T20:37:51.959Z" hostname="Rishabhs-MacBook-Air.local" time="0.031">
-  <properties/>
-  <testcase name="buildBroadcastTargetsIncludesGlobalFallback[desktop]" classname="org.orbitfs.common.client.OrbitRadarTest" time="0.027"/>
-  <testcase name="parseBeaconRejectsSelfAndLoopback[desktop]" classname="org.orbitfs.common.client.OrbitRadarTest" time="0.002"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>
