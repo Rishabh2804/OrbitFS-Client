@@ -2,6 +2,7 @@ package org.orbitfs.common.data
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -12,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import org.orbitfs.android.R
+import org.orbitfs.android.client.NotificationActionReceiver
 import org.orbitfs.common.util.PlatformContext
 import java.io.File
 import java.io.OutputStream
@@ -102,6 +104,22 @@ class AndroidLocalFileRepository(private val platformContext: PlatformContext) :
     override fun deleteDownload(id: String) {}
 
     private fun showDownloadNotification(name: String, progress: Int, total: Int) {
+        val cancelIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_CANCEL_DOWNLOAD
+            putExtra(NotificationActionReceiver.EXTRA_FILE_PATH, name)
+        }
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val cancelPendingIntent = PendingIntent.getBroadcast(
+            context,
+            name.hashCode(),
+            cancelIntent,
+            flags
+        )
+
         val builder = NotificationCompat.Builder(context, "downloads")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Downloading File")
@@ -109,6 +127,11 @@ class AndroidLocalFileRepository(private val platformContext: PlatformContext) :
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setProgress(total, progress, total <= 0)
             .setOngoing(progress < total)
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Cancel",
+                cancelPendingIntent
+            )
         
         notificationManager.notify(name.hashCode(), builder.build())
     }

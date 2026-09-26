@@ -174,7 +174,9 @@ fun main() = application {
                 onStopRadar = { viewModel.stopRadar() },
                 onResetIdentity = { viewModel.resetIdentity() },
                 onBackIntercept = { /* N/A */ },
-                settingsRepository = settingsRepository
+                settingsRepository = settingsRepository,
+                onOpenLocalFile = { viewModel.openLocalFile(it) },
+                onDeleteHistoryItem = { path, deleteFile -> viewModel.deleteTransferItem(path, deleteFile) }
             )
         }
     }

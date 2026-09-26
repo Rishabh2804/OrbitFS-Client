@@ -75,7 +75,8 @@ fun SharedAppContent(
     onCheckPermissions: () -> Unit = {},
     onBackIntercept: ((() -> Boolean) -> Unit)? = null,
     settingsRepository: SettingsRepository? = null,
-    onOpenLocalFile: (FileDownloadState) -> Unit = {}
+    onOpenLocalFile: (FileDownloadState) -> Unit = {},
+    onDeleteHistoryItem: (String, Boolean) -> Unit = { _, _ -> }
 ) {
     val isConnected = connectionState is ConnectionState.Connected
     
@@ -290,7 +291,8 @@ fun SharedAppContent(
                             onClearHistory = { onClearHistory() },
                             onCancelTransfer = { onCancelDownload(it) },
                             onRetryTransfer = { state -> onRetryDownload(state.path) },
-                            onOpenDownloadedFile = onOpenLocalFile
+                            onOpenDownloadedFile = onOpenLocalFile,
+                            onDeleteHistoryItem = onDeleteHistoryItem
                         )
                         2 -> {
                             val currentHost = hosts.find { it.host == connectionState.config.host && it.port == connectionState.config.port }

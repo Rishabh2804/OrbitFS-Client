@@ -265,11 +265,12 @@ class FileBrowserViewModel(
     }
 
     fun downloadFile(file: FileInfo, targetDirUri: String? = null) {
-        viewModelScope.launch {
+        val job = viewModelScope.launch {
+            var resolvedLocalPath = ""
             try {
                 _uiEffects.send(UiEffect.ShowToast("Download started: ${file.name}"))
                 val (localPath, out) = localFileRepository.getDownloadOutputStream(file.name, targetDirUri)
-                val resolvedLocalPath = localPath ?: ""
+                resolvedLocalPath = localPath ?: ""
                 updateProgress(file, 0, file.size, resolvedLocalPath)
                 if (out != null) {
                     out.use { stream ->
@@ -278,24 +279,67 @@ class FileBrowserViewModel(
                     }
                     localFileRepository.finishDownload(file.name)
                     _uiEffects.send(UiEffect.ShowToast("Downloaded ${file.name}"))
+                } else {
+                    val msg = "Could not open destination storage location"
+                    updateProgress(file, 0, file.size, resolvedLocalPath, isFailed = true, errorMsg = msg)
+                    _uiEffects.send(UiEffect.ShowToast("Download failed: $msg"))
                 }
             } catch (e: Exception) {
-                _uiEffects.send(UiEffect.ShowToast("Download failed: ${e.message}"))
+                if (e is CancellationException) {
+                    _downloadStates.update { map ->
+                        val existing = map[file.path]
+                        if (existing != null) map + (file.path to existing.copy(status = DownloadStatus.CANCELLED, speedBytesPerSecond = 0L))
+                        else map
+                    }
+                    _uiEffects.send(UiEffect.ShowToast("Download cancelled: ${file.name}"))
+                } else {
+                    val msg = e.message ?: "Unknown transfer error"
+                    OrbitLogger.e(TAG, "Download failed for ${file.name}", e)
+                    updateProgress(file, 0, file.size, resolvedLocalPath, isFailed = true, errorMsg = msg)
+                    _uiEffects.send(UiEffect.ShowToast("Download failed: $msg"))
+                }
+            } finally {
+                downloadJobs.remove(file.path)
             }
         }
+        downloadJobs[file.path] = job
     }
 
-    private fun updateProgress(file: FileInfo, p: Long, t: Long, savedToPath: String = "") {
+    private fun updateProgress(file: FileInfo, p: Long, t: Long, savedToPath: String = "", isFailed: Boolean = false, errorMsg: String = "") {
+        val now = System.currentTimeMillis()
         _downloadStates.update { currentMap ->
             val existing = currentMap[file.path]
             val localPath = if (savedToPath.isNotEmpty()) savedToPath else (existing?.savedToPath ?: "")
+            
+            val lastTime = existing?.lastUpdated ?: now
+            val lastBytes = existing?.bytesDownloaded ?: 0L
+            val timeDeltaMs = now - lastTime
+            val bytesDelta = p - lastBytes
+            
+            val speed = if (timeDeltaMs >= 250 && bytesDelta >= 0) {
+                (bytesDelta * 1000) / timeDeltaMs
+            } else if (p >= t && t > 0) {
+                0L
+            } else {
+                existing?.speedBytesPerSecond ?: 0L
+            }
+
+            val status = when {
+                isFailed -> DownloadStatus.FAILED
+                p >= t && t > 0 -> DownloadStatus.COMPLETE
+                else -> DownloadStatus.IN_PROGRESS
+            }
+
             currentMap + (file.path to FileDownloadState(
                 path = file.path,
                 fileName = file.name,
                 bytesDownloaded = p,
                 totalBytes = t,
-                status = if (p >= t && t > 0) DownloadStatus.COMPLETE else DownloadStatus.IN_PROGRESS,
-                savedToPath = localPath
+                status = status,
+                savedToPath = localPath,
+                errorMessage = errorMsg,
+                speedBytesPerSecond = if (status == DownloadStatus.COMPLETE || isFailed) 0L else speed,
+                lastUpdated = now
             ))
         }
     }
@@ -352,26 +396,27 @@ class FileBrowserViewModel(
         }
     }
 
-    fun cancelDownload(path: String) { downloadJobs[path]?.cancel() }
+    fun cancelDownload(path: String) {
+        downloadJobs[path]?.cancel()
+        downloadJobs.remove(path)
+    }
+
     fun clearTransferHistory() { _downloadStates.update { m -> m.filter { it.value.status == DownloadStatus.IN_PROGRESS } } }
+
+    fun deleteTransferItem(path: String, deleteFileFromDisk: Boolean = false) {
+        val st = _downloadStates.value[path]
+        if (st != null && deleteFileFromDisk && st.savedToPath.isNotEmpty() && !st.savedToPath.startsWith("content://")) {
+            try {
+                val f = File(st.savedToPath)
+                if (f.exists()) f.delete()
+            } catch (_: Exception) {}
+        }
+        _downloadStates.update { currentMap -> currentMap - path }
+    }
 
     fun retryDownload(path: String) {
         val st = _downloadStates.value[path] ?: return
-        viewModelScope.launch {
-            try {
-                val (outputPath, out) = localFileRepository.getDownloadOutputStream(st.fileName)
-                if (out != null) {
-                    out.use { stream ->
-                        val client = connectionManager.getClient()
-                        client.streamFile(st.path, stream) { p, t -> updateProgress(FileInfo(st.fileName, st.path, t, false), p, t) }
-                    }
-                    localFileRepository.finishDownload(st.fileName)
-                    _uiEffects.send(UiEffect.ShowToast("Retry complete"))
-                }
-            } catch (e: Exception) {
-                _uiEffects.send(UiEffect.ShowToast("Retry failed"))
-            }
-        }
+        downloadFile(FileInfo(name = st.fileName, path = st.path, size = st.totalBytes, isDirectory = false))
     }
 
     fun startRadar() { orbitRadar.startDiscovery(settingsRepository.nodeId.value) }

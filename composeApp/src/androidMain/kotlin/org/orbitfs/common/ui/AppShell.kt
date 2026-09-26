@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.orbitfs.android.MainActivity
+import org.orbitfs.android.client.NotificationSignals
 import org.orbitfs.common.data.SavedHost
 import org.orbitfs.common.data.SettingsRepository
 import org.orbitfs.common.model.FileInfo
@@ -88,6 +89,12 @@ fun AndroidAppShell(
                     context.startActivity(Intent.createChooser(intent, "Share File"))
                 }
             }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        NotificationSignals.cancelRequest.collect { path ->
+            viewModel.cancelDownload(path)
         }
     }
 
@@ -190,7 +197,8 @@ fun AndroidAppShell(
             onCheckPermissions = { (context as MainActivity).checkPermissions() },
             onBackIntercept = { backActionLambda = it },
             settingsRepository = settingsRepository,
-            onOpenLocalFile = { viewModel.openLocalFile(it) }
+            onOpenLocalFile = { viewModel.openLocalFile(it) },
+            onDeleteHistoryItem = { path, deleteFile -> viewModel.deleteTransferItem(path, deleteFile) }
         )
     }
 }

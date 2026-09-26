@@ -53,6 +53,15 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <receiver
+            android:name="org.orbitfs.android.client.NotificationActionReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.orbitfs.android.ACTION_CANCEL_DOWNLOAD" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
