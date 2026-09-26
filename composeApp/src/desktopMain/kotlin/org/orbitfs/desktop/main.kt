@@ -129,21 +129,18 @@ fun main() = application {
     LaunchedEffect(Unit) {
         viewModel.uiEffects.collect { effect ->
             when (effect) {
-                is UiEffect.OpenFolder -> {
-                    try {
-                        if (Desktop.isDesktopSupported()) {
-                            val f = effect.file
-                            if (f.exists()) {
-                                Desktop.getDesktop().browseFileDirectory(f)
-                            } else if (f.parentFile?.exists() == true) {
-                                Desktop.getDesktop().open(f.parentFile)
-                            }
-                        }
-                    } catch (e: Exception) {
-                        println("Failed to open folder on desktop: ${e.message}")
-                    }
+                is UiEffect.OpenFile -> {
+                    localFileRepository.openFile(effect.file, effect.mimeType)
                 }
-                else -> {}
+                is UiEffect.ShareFile -> {
+                    localFileRepository.shareFile(effect.file, effect.mimeType)
+                }
+                is UiEffect.OpenFolder -> {
+                    localFileRepository.shareFile(effect.file, "")
+                }
+                is UiEffect.ShowToast -> {
+                    println("TOAST: ${effect.message}")
+                }
             }
         }
     }

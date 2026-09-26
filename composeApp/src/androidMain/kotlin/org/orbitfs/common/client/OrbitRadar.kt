@@ -128,11 +128,13 @@ actual class OrbitRadar actual constructor(context: PlatformContext) {
                             val name = parts[1]
                             val nodeId = parts[4]
                             if (nodeId == localNodeId) continue
+                            val host = packet.address.hostAddress
+                            val port = parts[2].toInt()
                             lastSeenMap[nodeId] = System.currentTimeMillis()
                             _discoveredOrbiters.update { current ->
-                                current.filter { it.nodeId != nodeId }.toSet() + OrbiterInfo(
-                                    nodeId = nodeId, name = name, host = packet.address.hostAddress,
-                                    port = parts[2].toInt(), avatarId = parts[3]
+                                current.filter { it.nodeId != nodeId && !(it.host == host && it.port == port) }.toSet() + OrbiterInfo(
+                                    nodeId = nodeId, name = name, host = host,
+                                    port = port, avatarId = parts[3]
                                 )
                             }
                         }
