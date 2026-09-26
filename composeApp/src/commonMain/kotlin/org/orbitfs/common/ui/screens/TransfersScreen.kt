@@ -39,7 +39,8 @@ fun TransfersScreen(
     onCancelTransfer: (String) -> Unit,
     onRetryTransfer: (FileDownloadState) -> Unit,
     onOpenDownloadedFile: (FileDownloadState) -> Unit = {},
-    onDeleteHistoryItem: (String, Boolean) -> Unit = { _, _ -> }
+    onDeleteHistoryItem: (String, Boolean) -> Unit = { _, _ -> },
+    onOpenFolder: (FileDownloadState) -> Unit = {}
 ) {
     val pagerState = rememberPagerState(pageCount = { 2 })
     val coroutineScope = rememberCoroutineScope()
@@ -93,6 +94,7 @@ fun TransfersScreen(
                         transfers = historyTransfers,
                         onRetry = onRetryTransfer,
                         onOpen = onOpenDownloadedFile,
+                        onOpenFolder = onOpenFolder,
                         onShowInfo = { selectedDetailItem = it },
                         onDelete = { itemToDelete = it }
                     )
@@ -107,6 +109,9 @@ fun TransfersScreen(
                 onOpen = {
                     onOpenDownloadedFile(selectedDetailItem!!)
                     selectedDetailItem = null
+                },
+                onOpenFolder = {
+                    onOpenFolder(selectedDetailItem!!)
                 }
             )
         }
@@ -158,6 +163,7 @@ fun HistoryTransfersList(
     transfers: List<FileDownloadState>, 
     onRetry: (FileDownloadState) -> Unit,
     onOpen: (FileDownloadState) -> Unit,
+    onOpenFolder: (FileDownloadState) -> Unit,
     onShowInfo: (FileDownloadState) -> Unit,
     onDelete: (FileDownloadState) -> Unit
 ) {
@@ -169,7 +175,7 @@ fun HistoryTransfersList(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(transfers, key = { it.path }) { state ->
-                HistoryTransferItem(state, onRetry, onOpen, onShowInfo, onDelete)
+                HistoryTransferItem(state, onRetry, onOpen, onOpenFolder, onShowInfo, onDelete)
             }
         }
     }
@@ -211,6 +217,7 @@ fun HistoryTransferItem(
     state: FileDownloadState, 
     onRetry: (FileDownloadState) -> Unit,
     onOpen: (FileDownloadState) -> Unit,
+    onOpenFolder: (FileDownloadState) -> Unit,
     onShowInfo: (FileDownloadState) -> Unit,
     onDelete: (FileDownloadState) -> Unit
 ) {
@@ -279,6 +286,14 @@ fun HistoryTransferItem(
                         )
                     }
                     DropdownMenuItem(
+                        text = { Text("Show in Folder") },
+                        leadingIcon = { Icon(Icons.Rounded.FolderOpen, contentDescription = null) },
+                        onClick = {
+                            showMenu = false
+                            onOpenFolder(state)
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text("Information") },
                         leadingIcon = { Icon(Icons.Rounded.Info, contentDescription = null) },
                         onClick = {
@@ -315,7 +330,8 @@ fun HistoryTransferItem(
 fun TransferDetailsPopup(
     state: FileDownloadState,
     onClose: () -> Unit,
-    onOpen: () -> Unit
+    onOpen: () -> Unit,
+    onOpenFolder: () -> Unit = {}
 ) {
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
@@ -406,6 +422,13 @@ fun TransferDetailsPopup(
                             modifier = Modifier.weight(1f)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(onClick = onOpenFolder) {
+                            Icon(
+                                Icons.Rounded.FolderOpen,
+                                contentDescription = "Show in Folder",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                         IconButton(
                             onClick = {
                                 clipboardManager.setText(AnnotatedString(displayLoc))

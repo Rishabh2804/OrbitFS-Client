@@ -13,6 +13,7 @@ import org.orbitfs.common.client.OrbitRadar
 import org.orbitfs.common.data.DesktopLocalFileRepository
 import org.orbitfs.common.data.HostRepository
 import org.orbitfs.common.data.SettingsRepository
+import org.orbitfs.common.model.UiEffect
 import org.orbitfs.common.ui.FileBrowserViewModel
 import org.orbitfs.common.ui.SharedAppContent
 import org.orbitfs.common.ui.theme.OrbitFSTheme
@@ -21,6 +22,7 @@ import org.orbitfs.common.util.OrbitLogger
 import org.orbitfs.common.protocol.*
 import org.orbitfs.common.server.OrbitServerPatcher
 import org.orbitfs.server.*
+import java.awt.Desktop
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -114,6 +116,28 @@ fun main() = application {
     val connectionState by connectionManager.connectionState.collectAsState()
     val themeMode by settingsRepository.themeMode.collectAsState()
 
+    LaunchedEffect(Unit) {
+        viewModel.uiEffects.collect { effect ->
+            when (effect) {
+                is UiEffect.OpenFolder -> {
+                    try {
+                        if (Desktop.isDesktopSupported()) {
+                            val f = effect.file
+                            if (f.exists()) {
+                                Desktop.getDesktop().browseFileDirectory(f)
+                            } else if (f.parentFile?.exists() == true) {
+                                Desktop.getDesktop().open(f.parentFile)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        println("Failed to open folder on desktop: ${e.message}")
+                    }
+                }
+                else -> {}
+            }
+        }
+    }
+
     Window(
         onCloseRequest = {
             stopSatellite()
@@ -176,7 +200,8 @@ fun main() = application {
                 onBackIntercept = { /* N/A */ },
                 settingsRepository = settingsRepository,
                 onOpenLocalFile = { viewModel.openLocalFile(it) },
-                onDeleteHistoryItem = { path, deleteFile -> viewModel.deleteTransferItem(path, deleteFile) }
+                onDeleteHistoryItem = { path, deleteFile -> viewModel.deleteTransferItem(path, deleteFile) },
+                onOpenFolder = { viewModel.openFolderForDownloadedFile(it) }
             )
         }
     }

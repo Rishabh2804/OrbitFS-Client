@@ -1,5 +1,6 @@
 package org.orbitfs.common.ui
 
+import android.app.DownloadManager
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -87,6 +88,50 @@ fun AndroidAppShell(
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     context.startActivity(Intent.createChooser(intent, "Share File"))
+                }
+                is UiEffect.OpenFolder -> {
+                    val targetPath = effect.file.path
+                    if (targetPath.startsWith("content://")) {
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(Uri.parse(targetPath), "vnd.android.document/directory")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        try {
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            try {
+                                context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                })
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Could not open folder", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        val parentDir = effect.file.parentFile ?: effect.file
+                        val uri = try {
+                            FileProvider.getUriForFile(context, "org.orbitfs.android.kmp.fileprovider", parentDir)
+                        } catch (_: Exception) {
+                            Uri.fromFile(parentDir)
+                        }
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "resource/folder")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        try {
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            try {
+                                context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                })
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Could not open folder", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -198,7 +243,8 @@ fun AndroidAppShell(
             onBackIntercept = { backActionLambda = it },
             settingsRepository = settingsRepository,
             onOpenLocalFile = { viewModel.openLocalFile(it) },
-            onDeleteHistoryItem = { path, deleteFile -> viewModel.deleteTransferItem(path, deleteFile) }
+            onDeleteHistoryItem = { path, deleteFile -> viewModel.deleteTransferItem(path, deleteFile) },
+            onOpenFolder = { viewModel.openFolderForDownloadedFile(it) }
         )
     }
 }

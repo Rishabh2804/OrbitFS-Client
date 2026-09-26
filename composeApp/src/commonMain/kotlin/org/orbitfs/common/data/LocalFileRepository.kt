@@ -11,6 +11,7 @@ interface LocalFileRepository {
     
     // Download specific
     suspend fun getDownloadOutputStream(fileName: String, targetDirUri: String? = null): Pair<String?, OutputStream?>
+    fun updateDownloadProgress(fileName: String, bytesDownloaded: Long, totalBytes: Long) {}
     fun finishDownload(id: String)
     fun deleteDownload(id: String)
 }

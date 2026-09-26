@@ -264,6 +264,25 @@ class FileBrowserViewModel(
         }
     }
 
+    /**
+     * Navigates to or opens the folder containing the downloaded file.
+     */
+    fun openFolderForDownloadedFile(state: FileDownloadState) {
+        val targetPath = state.savedToPath.ifEmpty { state.path }
+        viewModelScope.launch {
+            if (targetPath.startsWith("content://")) {
+                _uiEffects.send(UiEffect.OpenFolder(File(targetPath)))
+            } else {
+                val f = File(targetPath)
+                if (f.exists() || f.parentFile?.exists() == true) {
+                    _uiEffects.send(UiEffect.OpenFolder(f))
+                } else {
+                    _uiEffects.send(UiEffect.ShowToast("Folder not found"))
+                }
+            }
+        }
+    }
+
     fun downloadFile(file: FileInfo, targetDirUri: String? = null) {
         val job = viewModelScope.launch {
             var resolvedLocalPath = ""
