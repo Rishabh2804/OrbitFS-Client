@@ -85,6 +85,7 @@ fun TransfersScreen(
 
             HorizontalPager(
                 state = pagerState,
+                verticalAlignment = Alignment.Top,
                 modifier = Modifier.weight(1f).fillMaxWidth()
             ) { page ->
                 if (page == 0) {

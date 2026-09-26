@@ -1,5 +1,6 @@
 package org.orbitfs.common.util
 
+import org.orbitfs.common.model.PilotAvatar
 import kotlin.random.Random
 
 object IdentityGenerator {
@@ -26,5 +27,9 @@ object IdentityGenerator {
         val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         // 12-character alphanumeric ID
         return (1..12).map { chars.random() }.joinToString("")
+    }
+
+    fun generateRandomAvatarId(): String {
+        return PilotAvatar.ALL.random().id
     }
 }

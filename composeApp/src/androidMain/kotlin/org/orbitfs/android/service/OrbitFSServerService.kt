@@ -53,9 +53,10 @@ class OrbitFSServerService : Service() {
     }
 
     private fun startServer(port: Int) {
-        if (activeServers.containsKey(port)) {
-            println("OrbitService: Server already running on $port")
-            return
+        if (activeServers.isNotEmpty()) {
+            println("OrbitService: Stopping existing satellite before starting on port $port")
+            stopAll()
+            runBlocking { delay(600) }
         }
 
         val pilotName = settingsRepository.username.value

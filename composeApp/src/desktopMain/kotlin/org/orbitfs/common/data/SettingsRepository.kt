@@ -68,7 +68,13 @@ actual class SettingsRepository actual constructor(context: PlatformContext) {
             _username.value = savedName
         }
 
-        _avatarId.value = props.getProperty("avatar_id", "rocket")
+        var avatar = props.getProperty("avatar_id")
+        if (avatar.isNullOrBlank()) {
+            avatar = IdentityGenerator.generateRandomAvatarId()
+            props.setProperty("avatar_id", avatar)
+        }
+        _avatarId.value = avatar
+
         _themeMode.value = props.getProperty("theme_mode", "System Default")
         _satelliteEnabled.value = props.getProperty("satellite_enabled", "false").toBoolean()
         _satellitePort.value = props.getProperty("satellite_port", "9090").toIntOrNull() ?: 9090

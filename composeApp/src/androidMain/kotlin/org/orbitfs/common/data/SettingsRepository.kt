@@ -58,7 +58,13 @@ actual class SettingsRepository actual constructor(context: PlatformContext) {
             }
             _username.value = name
 
-            _avatarId.value = prefs.getString("avatar_id", "rocket") ?: "rocket"
+            var avatar = prefs.getString("avatar_id", null)
+            if (avatar.isNullOrBlank()) {
+                avatar = IdentityGenerator.generateRandomAvatarId()
+                prefs.edit { putString("avatar_id", avatar) }
+            }
+            _avatarId.value = avatar
+
             _themeMode.value = prefs.getString("theme_mode", "System Default") ?: "System Default"
             _satellitePort.value = prefs.getInt("satellite_port", 9090)
             _satelliteEnabled.value = prefs.getBoolean("satellite_enabled", false)

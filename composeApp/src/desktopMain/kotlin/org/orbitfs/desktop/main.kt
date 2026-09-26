@@ -51,6 +51,16 @@ fun main() = application {
     }
 
     fun startSatellite() {
+        if (desktopServer != null) {
+            OrbitLogger.d("DesktopMain", "Stopping existing satellite server before launching new instance")
+            radar.unregisterService()
+            try {
+                desktopServer?.stop()
+            } catch (_: Exception) {}
+            desktopServer = null
+            Thread.sleep(500)
+        }
+
         // FORCE ROOT: /Users
         val rootUri = "/Users"
         settingsRepository.setSatelliteRootUri(rootUri, "Users")

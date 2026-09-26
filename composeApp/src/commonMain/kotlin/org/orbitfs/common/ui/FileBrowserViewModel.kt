@@ -304,6 +304,11 @@ class FileBrowserViewModel(
                     _uiEffects.send(UiEffect.ShowToast("Download failed: $msg"))
                 }
             } catch (e: Exception) {
+                val currentStatus = _downloadStates.value[file.path]?.status
+                if (currentStatus == DownloadStatus.COMPLETE) {
+                    return@launch
+                }
+                val lastDownloaded = _downloadStates.value[file.path]?.bytesDownloaded ?: 0L
                 if (e is CancellationException) {
                     _downloadStates.update { map ->
                         val existing = map[file.path]
@@ -314,7 +319,7 @@ class FileBrowserViewModel(
                 } else {
                     val msg = e.message ?: "Unknown transfer error"
                     OrbitLogger.e(TAG, "Download failed for ${file.name}", e)
-                    updateProgress(file, 0, file.size, resolvedLocalPath, isFailed = true, errorMsg = msg)
+                    updateProgress(file, lastDownloaded, file.size, resolvedLocalPath, isFailed = true, errorMsg = msg)
                     _uiEffects.send(UiEffect.ShowToast("Download failed: $msg"))
                 }
             } finally {
@@ -335,13 +340,17 @@ class FileBrowserViewModel(
             val timeDeltaMs = now - lastTime
             val bytesDelta = p - lastBytes
             
-            val speed = if (timeDeltaMs >= 250 && bytesDelta >= 0) {
-                (bytesDelta * 1000) / timeDeltaMs
+            val (speed, updatedLastTime) = if (timeDeltaMs >= 250 && bytesDelta >= 0) {
+                Pair((bytesDelta * 1000) / timeDeltaMs, now)
             } else if (p >= t && t > 0) {
-                0L
+                Pair(0L, now)
             } else {
-                existing?.speedBytesPerSecond ?: 0L
+                Pair(existing?.speedBytesPerSecond ?: 0L, existing?.lastUpdated ?: now)
             }
+
+            val currentDownloaded = if (isFailed && p == 0L && (existing?.bytesDownloaded ?: 0L) > 0L) {
+                existing!!.bytesDownloaded
+            } else p
 
             val status = when {
                 isFailed -> DownloadStatus.FAILED
@@ -349,16 +358,19 @@ class FileBrowserViewModel(
                 else -> DownloadStatus.IN_PROGRESS
             }
 
+            // Sync Android system notification progress live
+            localFileRepository.updateDownloadProgress(file.name, currentDownloaded, t)
+
             currentMap + (file.path to FileDownloadState(
                 path = file.path,
                 fileName = file.name,
-                bytesDownloaded = p,
+                bytesDownloaded = currentDownloaded,
                 totalBytes = t,
                 status = status,
                 savedToPath = localPath,
                 errorMessage = errorMsg,
                 speedBytesPerSecond = if (status == DownloadStatus.COMPLETE || isFailed) 0L else speed,
-                lastUpdated = now
+                lastUpdated = updatedLastTime
             ))
         }
     }
@@ -416,8 +428,31 @@ class FileBrowserViewModel(
     }
 
     fun cancelDownload(path: String) {
-        downloadJobs[path]?.cancel()
-        downloadJobs.remove(path)
+        val cleanPath = path.trimStart('/')
+        val jobEntry = downloadJobs.entries.find { it.key.trimStart('/') == cleanPath }
+        
+        // 1. Immediately mark status as CANCELLED in UI
+        _downloadStates.update { map ->
+            val existing = map[path] ?: map[jobEntry?.key]
+            if (existing != null) {
+                map + (existing.path to existing.copy(status = DownloadStatus.CANCELLED, speedBytesPerSecond = 0L))
+            } else map
+        }
+        
+        // 2. Cancel coroutine job
+        jobEntry?.value?.cancel()
+        downloadJobs.remove(jobEntry?.key ?: path)
+        
+        // 3. Force disconnect TCP socket to unblock any pending socket read
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                connectionManager.getClient().disconnect()
+            } catch (e: Exception) {
+                OrbitLogger.e(TAG, "Disconnect error on cancel: ${e.message}")
+            }
+        }
+        
+        _uiEffects.trySend(UiEffect.ShowToast("Download cancelled"))
     }
 
     fun clearTransferHistory() { _downloadStates.update { m -> m.filter { it.value.status == DownloadStatus.IN_PROGRESS } } }
@@ -497,6 +532,17 @@ class FileBrowserViewModel(
     fun dismissLargeDownload() { _state.update { it.copy(fileToConfirmLargeDownload = null) } }
     
     fun resetIdentity() {
-        settingsRepository.resetIdentity()
+        val wasRunning = settingsRepository.satelliteEnabled.value
+        viewModelScope.launch {
+            if (wasRunning) {
+                onToggleSatellite() // STOP active satellite & radar registration
+                delay(1000)
+            }
+            settingsRepository.resetIdentity()
+            delay(500)
+            if (wasRunning) {
+                onToggleSatellite() // RE-LAUNCH satellite with new node ID & identity
+            }
+        }
     }
 }
