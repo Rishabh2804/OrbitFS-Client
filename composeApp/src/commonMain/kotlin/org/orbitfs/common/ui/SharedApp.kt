@@ -254,6 +254,7 @@ fun SharedAppContent(
                                 state = browserState,
                                 serverName = connectionState.config.name,
                                 serverAddress = "${connectionState.config.host}:${connectionState.config.port}",
+                                downloadStates = downloadStates,
                                 onBack = { onDisconnect() },
                                 onSearchClick = { showSearchModal = true },
                                 onBreadcrumbClick = { onNavigateTo(it) },

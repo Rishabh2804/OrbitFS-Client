@@ -75,6 +75,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import org.orbitfs.common.model.BrowserState
+import org.orbitfs.common.model.DownloadStatus
+import org.orbitfs.common.model.FileDownloadState
 import org.orbitfs.common.model.FileInfo
 import org.orbitfs.common.model.SortOrder
 import org.orbitfs.common.model.SortType
@@ -87,6 +89,7 @@ fun FileExplorerScreen(
     state: BrowserState,
     serverName: String,
     serverAddress: String,
+    downloadStates: Map<String, FileDownloadState> = emptyMap(),
     onBack: () -> Unit,
     onSearchClick: () -> Unit,
     onBreadcrumbClick: (String) -> Unit,
@@ -303,9 +306,11 @@ fun FileExplorerScreen(
                         contentPadding = PaddingValues(bottom = 16.dp)
                     ) {
                         items(state.files, key = { it.path }) { file ->
+                            val isItemLoading = state.loadingItemPaths.contains(file.path) || downloadStates[file.path]?.status == DownloadStatus.IN_PROGRESS
                             FileRowItem(
                                 file = file,
                                 isSelected = state.selectedPaths.contains(file.path),
+                                isLoading = isItemLoading,
                                 onClick = { onItemClick(file) },
                                 onLongClick = { onItemLongClick(file) }
                             )
@@ -434,6 +439,7 @@ fun BreadcrumbBar(currentPath: String, onBreadcrumbClick: (String) -> Unit) {
 fun FileRowItem(
     file: FileInfo,
     isSelected: Boolean,
+    isLoading: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -487,6 +493,15 @@ fun FileRowItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+
+            if (isLoading) {
+                Spacer(modifier = Modifier.width(12.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }

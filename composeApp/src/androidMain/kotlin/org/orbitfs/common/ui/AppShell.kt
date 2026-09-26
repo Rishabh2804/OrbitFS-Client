@@ -44,7 +44,15 @@ fun AndroidAppShell(
             when (effect) {
                 is UiEffect.ShowToast -> Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
                 is UiEffect.OpenFile -> {
-                    val uri = FileProvider.getUriForFile(context, "org.orbitfs.android.kmp.fileprovider", effect.file)
+                    val uri = if (effect.file.path.startsWith("content://")) {
+                        Uri.parse(effect.file.path)
+                    } else {
+                        try {
+                            FileProvider.getUriForFile(context, "org.orbitfs.android.kmp.fileprovider", effect.file)
+                        } catch (_: Exception) {
+                            Uri.fromFile(effect.file)
+                        }
+                    }
                     val intent = Intent(Intent.ACTION_VIEW).apply {
                         setDataAndType(uri, effect.mimeType)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -63,7 +71,15 @@ fun AndroidAppShell(
                     }
                 }
                 is UiEffect.ShareFile -> {
-                    val uri = FileProvider.getUriForFile(context, "org.orbitfs.android.kmp.fileprovider", effect.file)
+                    val uri = if (effect.file.path.startsWith("content://")) {
+                        Uri.parse(effect.file.path)
+                    } else {
+                        try {
+                            FileProvider.getUriForFile(context, "org.orbitfs.android.kmp.fileprovider", effect.file)
+                        } catch (_: Exception) {
+                            Uri.fromFile(effect.file)
+                        }
+                    }
                     val intent = Intent(Intent.ACTION_SEND).apply {
                         type = effect.mimeType
                         putExtra(Intent.EXTRA_STREAM, uri)

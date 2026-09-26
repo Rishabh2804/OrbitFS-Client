@@ -212,6 +212,7 @@ class FileBrowserViewModel(
         }
         
         viewModelScope.launch {
+            _state.update { it.copy(loadingItemPaths = it.loadingItemPaths + file.path) }
             try {
                 val tmp = File(localFileRepository.getCacheDir(), file.name)
                 tmp.outputStream().use { output ->
@@ -232,6 +233,8 @@ class FileBrowserViewModel(
                 _uiEffects.send(UiEffect.OpenFile(tmp, detectedMime))
             } catch (e: Exception) {
                 _uiEffects.send(UiEffect.ShowToast("Open failed: ${e.message}"))
+            } finally {
+                _state.update { it.copy(loadingItemPaths = it.loadingItemPaths - file.path) }
             }
         }
     }
@@ -240,15 +243,23 @@ class FileBrowserViewModel(
      * Opens a file that was already downloaded (from history).
      */
     fun openLocalFile(state: FileDownloadState) {
-        val file = File(state.path) // Path in state is local path after download
-        if (file.exists()) {
-            val mime = MimeTypeUtil.getMimeType(file)
+        val targetPath = state.savedToPath.ifEmpty { state.path }
+        if (targetPath.startsWith("content://")) {
+            val mime = MimeTypeUtil.getMimeType(File(state.fileName))
             viewModelScope.launch {
-                _uiEffects.send(UiEffect.OpenFile(file, mime))
+                _uiEffects.send(UiEffect.OpenFile(File(targetPath), mime))
             }
         } else {
-            viewModelScope.launch {
-                _uiEffects.send(UiEffect.ShowToast("Local file not found"))
+            val file = File(targetPath)
+            if (file.exists()) {
+                val mime = MimeTypeUtil.getMimeType(file)
+                viewModelScope.launch {
+                    _uiEffects.send(UiEffect.OpenFile(file, mime))
+                }
+            } else {
+                viewModelScope.launch {
+                    _uiEffects.send(UiEffect.ShowToast("Local file not found"))
+                }
             }
         }
     }
@@ -256,12 +267,14 @@ class FileBrowserViewModel(
     fun downloadFile(file: FileInfo, targetDirUri: String? = null) {
         viewModelScope.launch {
             try {
-                // localFileRepository implementation should handle the Uri if provided
-                val (path, out) = localFileRepository.getDownloadOutputStream(file.name, targetDirUri)
+                _uiEffects.send(UiEffect.ShowToast("Download started: ${file.name}"))
+                val (localPath, out) = localFileRepository.getDownloadOutputStream(file.name, targetDirUri)
+                val resolvedLocalPath = localPath ?: ""
+                updateProgress(file, 0, file.size, resolvedLocalPath)
                 if (out != null) {
                     out.use { stream ->
                         val client = connectionManager.getClient()
-                        client.streamFile(file.path, stream) { p, t -> updateProgress(file, p, t) }
+                        client.streamFile(file.path, stream) { p, t -> updateProgress(file, p, t, resolvedLocalPath) }
                     }
                     localFileRepository.finishDownload(file.name)
                     _uiEffects.send(UiEffect.ShowToast("Downloaded ${file.name}"))
@@ -272,12 +285,24 @@ class FileBrowserViewModel(
         }
     }
 
-    private fun updateProgress(file: FileInfo, p: Long, t: Long) {
-        _downloadStates.update { it + (file.path to FileDownloadState(file.path, file.name, p, t, if (p >= t && t > 0) DownloadStatus.COMPLETE else DownloadStatus.IN_PROGRESS)) }
+    private fun updateProgress(file: FileInfo, p: Long, t: Long, savedToPath: String = "") {
+        _downloadStates.update { currentMap ->
+            val existing = currentMap[file.path]
+            val localPath = if (savedToPath.isNotEmpty()) savedToPath else (existing?.savedToPath ?: "")
+            currentMap + (file.path to FileDownloadState(
+                path = file.path,
+                fileName = file.name,
+                bytesDownloaded = p,
+                totalBytes = t,
+                status = if (p >= t && t > 0) DownloadStatus.COMPLETE else DownloadStatus.IN_PROGRESS,
+                savedToPath = localPath
+            ))
+        }
     }
 
     fun shareFile(file: FileInfo) {
         viewModelScope.launch {
+            _state.update { it.copy(loadingItemPaths = it.loadingItemPaths + file.path) }
             try {
                 val tmp = File(localFileRepository.getCacheDir(), "share_" + file.name)
                 tmp.outputStream().use { output ->
@@ -287,6 +312,8 @@ class FileBrowserViewModel(
                 _uiEffects.send(UiEffect.ShareFile(tmp, file.mimeType))
             } catch (e: Exception) {
                 _uiEffects.send(UiEffect.ShowToast("Share failed"))
+            } finally {
+                _state.update { it.copy(loadingItemPaths = it.loadingItemPaths - file.path) }
             }
         }
     }
