@@ -6,16 +6,7 @@
 
 OrbitFS communicates over raw TCP sockets using a 4-byte length-prefixed binary header followed by a minified JSON command payload.
 
-```mermaid
-graph LR
-    subgraph Header["4-Byte Header (Big-Endian Int)"]
-        H["Payload Length (e.g. 1024)"]
-    end
-    subgraph Payload["JSON RPC Payload"]
-        P["{'id': 1, 'method': 'READ', 'fd': '...', 'offset': 0, 'count': 65536}"]
-    end
-    Header --> Payload
-```
+![RPC Framing](./diagrams/rpc_framing.svg)
 
 #### Protocol Opcodes / Methods:
 - **`PING`**: Health check and round-trip latency measurement.
@@ -28,58 +19,13 @@ graph LR
 
 ---
 
-### 2. State Machine Diagrams
+### 2. Data Transfer Sequence Diagram
 
-#### Connection Lifecycle
-```mermaid
-stateDiagram-v2
-    [*] --> Disconnected
-    Disconnected --> Connecting: Connect Request
-    Connecting --> Connected: Handshake Success
-    Connecting --> Error: Handshake Failed
-    Connected --> Disconnected: User Disconnect
-    Error --> Disconnected: Reset / Retry
-```
-
-#### File Download State Machine
-```mermaid
-stateDiagram-v2
-    [*] --> NOT_STARTED
-    NOT_STARTED --> IN_PROGRESS: Start Transfer
-    IN_PROGRESS --> COMPLETE: Stream Completed
-    IN_PROGRESS --> CANCELLED: User Cancelled / Socket Teardown
-    IN_PROGRESS --> FAILED: Network / I/O Exception
-```
+![Data Transfer Sequence](./diagrams/sequence_transfer.svg)
 
 ---
 
-### 3. Data Transfer Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as User (App)
-    participant VM as FileBrowserViewModel
-    participant Client as OrbitFSClientWrapper
-    participant Server as Satellite Server
-
-    User->>VM: Download File (file)
-    VM->>VM: getOutputStream()
-    VM->>Client: streamFile(path, stream)
-    Client->>Server: OPEN RPC (path)
-    Server-->>Client: Handle Result
-    loop Chunk Streaming
-        Client->>Server: READ RPC (offset, count)
-        Server-->>Client: Base64 Chunk Response
-        Client->>VM: Progress Update (bytes, total)
-        VM-->>User: Live UI Speed & Progress Update
-    end
-    Client->>Server: CLOSE RPC (handle)
-```
-
----
-
-### 4. Security & Path Canonicalization (`SandboxGuard`)
+### 3. Security & Path Canonicalization (`SandboxGuard`)
 
 To protect the host device from malicious directory traversal attempts (`../../system/hosts`), all path requests pass through `SandboxGuard`:
 

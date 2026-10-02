@@ -1,0 +1,17 @@
+shape: sequence_diagram
+
+user: User (App)
+vm: FileBrowserViewModel
+client: OrbitFSClientWrapper
+server: Satellite Server
+
+user -> vm: 1. Download File (file)
+vm -> vm: 2. getDownloadOutputStream()
+vm -> client: 3. streamFile(path, stream)
+client -> server: 4. OPEN RPC (path)
+server -> client: 5. Handle Result
+client -> server: 6. READ RPC (offset, count)
+server -> client: 7. Base64 Chunk Response
+client -> vm: 8. Progress Update (bytes, total)
+vm -> user: 9. Live UI Speed & Progress Update
+client -> server: 10. CLOSE RPC (handle)

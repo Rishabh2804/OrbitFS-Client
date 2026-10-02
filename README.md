@@ -45,32 +45,7 @@ Below is a brief summary of OrbitFS Client capabilities. For in-depth technical 
 
 For full architectural patterns and threading details, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-```mermaid
-graph TD
-    subgraph CommonSub["Shared Presentation & Domain (commonMain)"]
-        VM["FileBrowserViewModel"]
-        State["BrowserState / StateFlows"]
-        Wrapper["OrbitFSClientWrapper (RPC)"]
-        UI["Compose Material 3 UI"]
-    end
-
-    subgraph AndroidPlatform["Android Platform (androidMain)"]
-        Service["OrbitFSServerService (Foreground)"]
-        SAF["AndroidLocalFileRepository (SAF)"]
-        Notif["NotificationActionReceiver"]
-        Lock["WifiManager MulticastLock"]
-    end
-
-    subgraph DesktopPlatform["Desktop Platform (desktopMain)"]
-        Launcher["Desktop JVM Main (main.kt)"]
-        DesktopRepo["DesktopLocalFileRepository"]
-        AWT["AWT Desktop / ProcessBuilder"]
-        Swing["JFileChooser"]
-    end
-
-    CommonSub --> AndroidPlatform
-    CommonSub --> DesktopPlatform
-```
+![System Architecture](./docs/diagrams/architecture.svg)
 
 | Layer | Technologies & Frameworks |
 |---|---|
@@ -85,38 +60,9 @@ graph TD
 
 ## 📐 Low-Level Design (LLD) Summary
 
-OrbitFS uses a framed TCP socket protocol with 4-byte big-endian length headers. For sequence diagrams and state machine specifications, see [docs/DESIGN.md](docs/DESIGN.md).
+OrbitFS uses a framed TCP socket protocol with 4-byte big-endian length headers. For full sequence diagrams and state machine specifications, see [docs/DESIGN.md](docs/DESIGN.md).
 
-```mermaid
-graph LR
-    subgraph Header["4-Byte Header (Big-Endian Int)"]
-        H["Payload Length (e.g. 1024)"]
-    end
-    subgraph Payload["JSON RPC Payload"]
-        P["{'id': 1, 'method': 'READ', 'fd': '...', 'offset': 0, 'count': 65536}"]
-    end
-    Header --> Payload
-```
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as User (App)
-    participant VM as FileBrowserViewModel
-    participant Client as OrbitFSClientWrapper
-    participant ServerNode as Satellite Server
-
-    User->>VM: Download File
-    VM->>Client: streamFile(path)
-    Client->>ServerNode: OPEN RPC
-    ServerNode-->>Client: Handle Result
-    loop Chunk Streaming
-        Client->>ServerNode: READ RPC (offset, count)
-        ServerNode-->>Client: Base64 Chunk Response
-        Client->>VM: Progress & Speed Update
-    end
-    Client->>ServerNode: CLOSE RPC
-```
+![RPC Framing](./docs/diagrams/rpc_framing.svg)
 
 ---
 
@@ -131,7 +77,8 @@ OrbitFS-Client/
 │   │   └── desktopMain/     # Desktop JVM Launcher, AWT/ProcessBuilder Handlers, Desktop Repository
 │   └── libs/
 │       └── orbitfs-core-0.1.0.jar   # Core Pure-Java RPC & Transport Library
-├── docs/                    # Detailed technical sub-documentation
+├── docs/                    # Detailed technical sub-documentation & D2 diagrams
+│   ├── diagrams/            # D2-generated SVG architecture & sequence diagrams
 │   ├── FEATURES.md          # Feature specification & capability list
 │   ├── ARCHITECTURE.md      # System architecture & KMP patterns
 │   ├── DESIGN.md            # Low-Level Design (LLD) & protocol spec

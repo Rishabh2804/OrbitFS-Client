@@ -4,32 +4,7 @@
 
 OrbitFS is structured as a Kotlin Multiplatform (KMP) project that isolates core domain logic, presentation state machines, and RPC protocol handlers into `commonMain`, while providing native platform implementations in `androidMain` and `desktopMain`.
 
-```mermaid
-graph TD
-    subgraph CommonSub["Shared Presentation & Domain (commonMain)"]
-        VM["FileBrowserViewModel"]
-        State["BrowserState / StateFlows"]
-        Wrapper["OrbitFSClientWrapper (RPC)"]
-        UI["Compose Material 3 UI"]
-    end
-
-    subgraph AndroidPlatform["Android Platform (androidMain)"]
-        Service["OrbitFSServerService (Foreground)"]
-        SAF["AndroidLocalFileRepository (SAF)"]
-        Notif["NotificationActionReceiver"]
-        Lock["WifiManager MulticastLock"]
-    end
-
-    subgraph DesktopPlatform["Desktop Platform (desktopMain)"]
-        Launcher["Desktop JVM Main (main.kt)"]
-        DesktopRepo["DesktopLocalFileRepository"]
-        AWT["AWT Desktop / ProcessBuilder"]
-        Swing["JFileChooser"]
-    end
-
-    CommonSub --> AndroidPlatform
-    CommonSub --> DesktopPlatform
-```
+![System Architecture](./diagrams/architecture.svg)
 
 ---
 

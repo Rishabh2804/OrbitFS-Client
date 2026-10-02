@@ -1,0 +1,44 @@
+direction: down
+
+commonMain: "Shared Presentation & Domain (commonMain)" {
+  style.fill: "#1E1E2E"
+  style.stroke: "#89B4FA"
+  style.font-color: "#CDD6F4"
+
+  vm: "FileBrowserViewModel" { style.fill: "#313244"; style.font-color: "#89B4FA" }
+  state: "BrowserState / StateFlows" { style.fill: "#313244"; style.font-color: "#A6E3A1" }
+  wrapper: "OrbitFSClientWrapper (RPC)" { style.fill: "#313244"; style.font-color: "#FAB387" }
+  ui: "Compose Material 3 UI" { style.fill: "#313244"; style.font-color: "#F9E2AF" }
+}
+
+androidMain: "Android Platform (androidMain)" {
+  style.fill: "#181825"
+  style.stroke: "#A6E3A1"
+  style.font-color: "#CDD6F4"
+
+  service: "OrbitFSServerService (Foreground)" { style.fill: "#313244"; style.font-color: "#A6E3A1" }
+  saf: "AndroidLocalFileRepository (SAF)" { style.fill: "#313244"; style.font-color: "#89B4FA" }
+  notif: "NotificationActionReceiver" { style.fill: "#313244"; style.font-color: "#F38BA8" }
+  lock: "WifiManager MulticastLock" { style.fill: "#313244"; style.font-color: "#CBA6F7" }
+}
+
+desktopMain: "Desktop Platform (desktopMain)" {
+  style.fill: "#181825"
+  style.stroke: "#FAB387"
+  style.font-color: "#CDD6F4"
+
+  launcher: "Desktop JVM Main (main.kt)" { style.fill: "#313244"; style.font-color: "#FAB387" }
+  desktopRepo: "DesktopLocalFileRepository" { style.fill: "#313244"; style.font-color: "#89B4FA" }
+  awt: "AWT Desktop / ProcessBuilder" { style.fill: "#313244"; style.font-color: "#89DCEB" }
+  swing: "JFileChooser" { style.fill: "#313244"; style.font-color: "#F9E2AF" }
+}
+
+commonMain -> androidMain: "Target (expect/actual)" {
+  style.stroke: "#89B4FA"
+  style.stroke-width: 2
+}
+
+commonMain -> desktopMain: "Target (expect/actual)" {
+  style.stroke: "#FAB387"
+  style.stroke-width: 2
+}
