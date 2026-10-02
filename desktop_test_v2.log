@@ -1,0 +1,36 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.3.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :composeApp:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :composeApp:convertXmlValueResourcesForCommonMain NO-SOURCE
+> Task :composeApp:copyNonXmlValueResourcesForCommonMain NO-SOURCE
+> Task :composeApp:prepareComposeResourcesTaskForCommonMain NO-SOURCE
+> Task :composeApp:generateResourceAccessorsForCommonMain NO-SOURCE
+> Task :composeApp:convertXmlValueResourcesForDesktopMain NO-SOURCE
+> Task :composeApp:copyNonXmlValueResourcesForDesktopMain NO-SOURCE
+> Task :composeApp:prepareComposeResourcesTaskForDesktopMain NO-SOURCE
+> Task :composeApp:generateResourceAccessorsForDesktopMain NO-SOURCE
+> Task :composeApp:generateActualResourceCollectorsForDesktopMain UP-TO-DATE
+> Task :composeApp:generateComposeResClass UP-TO-DATE
+> Task :composeApp:generateExpectResourceCollectorsForCommonMain UP-TO-DATE
+> Task :composeApp:assembleDesktopMainResources UP-TO-DATE
+> Task :composeApp:desktopProcessResources UP-TO-DATE
+> Task :composeApp:prepareAppResources NO-SOURCE
+
+> Task :composeApp:compileKotlinDesktop
+w: file:///Users/rishabh/Projects/OrbitFS-Android/composeApp/src/commonMain/kotlin/org/orbitfs/common/data/HostRepository.kt:6:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///Users/rishabh/Projects/OrbitFS-Android/composeApp/src/commonMain/kotlin/org/orbitfs/common/data/SettingsRepository.kt:6:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///Users/rishabh/Projects/OrbitFS-Android/composeApp/src/commonMain/kotlin/org/orbitfs/common/model/PilotAvatar.kt:27:49 'val Icons.Rounded.AirplaneTicket: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Rounded.AirplaneTicket.
+w: file:///Users/rishabh/Projects/OrbitFS-Android/composeApp/src/commonMain/kotlin/org/orbitfs/common/ui/components/SearchModal.kt:175:101 'val Icons.Rounded.InsertDriveFile: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Rounded.InsertDriveFile.
+w: file:///Users/rishabh/Projects/OrbitFS-Android/composeApp/src/commonMain/kotlin/org/orbitfs/common/ui/screens/FileExplorerScreen.kt:218:72 'val Icons.Rounded.Sort: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Rounded.Sort.
+w: file:///Users/rishabh/Projects/OrbitFS-Android/composeApp/src/commonMain/kotlin/org/orbitfs/common/util/OrbitLogger.kt:3:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///Users/rishabh/Projects/OrbitFS-Android/composeApp/src/commonMain/kotlin/org/orbitfs/common/util/PlatformContext.kt:3:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///Users/rishabh/Projects/OrbitFS-Android/composeApp/src/desktopMain/kotlin/org/orbitfs/common/data/HostRepository.kt:11:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///Users/rishabh/Projects/OrbitFS-Android/composeApp/src/desktopMain/kotlin/org/orbitfs/common/data/SettingsRepository.kt:10:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///Users/rishabh/Projects/OrbitFS-Android/composeApp/src/desktopMain/kotlin/org/orbitfs/common/util/OrbitLogger.kt:3:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///Users/rishabh/Projects/OrbitFS-Android/composeApp/src/desktopMain/kotlin/org/orbitfs/common/util/PlatformContext.kt:3:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+
+> Task :composeApp:desktopMainClasses
+> Task :composeApp:desktopJar
+
+> Task :composeApp:run
+D/FileBrowserVM: Syncing satellite status: false

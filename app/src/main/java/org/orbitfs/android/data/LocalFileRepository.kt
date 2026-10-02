@@ -17,7 +17,7 @@ import org.orbitfs.android.util.MimeTypeUtil
 import java.io.File
 import java.io.OutputStream
 
-class LocalFileRepository(private val context: Context) {
+class LocalFileRepository(val context: Context) {
 
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
