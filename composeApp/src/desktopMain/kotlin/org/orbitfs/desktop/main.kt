@@ -13,6 +13,7 @@ import org.orbitfs.common.client.OrbitRadar
 import org.orbitfs.common.data.DesktopLocalFileRepository
 import org.orbitfs.common.data.HostRepository
 import org.orbitfs.common.data.SettingsRepository
+import org.orbitfs.common.model.UiEffect
 import org.orbitfs.common.ui.FileBrowserViewModel
 import org.orbitfs.common.ui.SharedAppContent
 import org.orbitfs.common.ui.theme.OrbitFSTheme
@@ -21,6 +22,7 @@ import org.orbitfs.common.util.OrbitLogger
 import org.orbitfs.common.protocol.*
 import org.orbitfs.common.server.OrbitServerPatcher
 import org.orbitfs.server.*
+import java.awt.Desktop
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -49,6 +51,16 @@ fun main() = application {
     }
 
     fun startSatellite() {
+        if (desktopServer != null) {
+            OrbitLogger.d("DesktopMain", "Stopping existing satellite server before launching new instance")
+            radar.unregisterService()
+            try {
+                desktopServer?.stop()
+            } catch (_: Exception) {}
+            desktopServer = null
+            Thread.sleep(500)
+        }
+
         // FORCE ROOT: /Users
         val rootUri = "/Users"
         settingsRepository.setSatelliteRootUri(rootUri, "Users")
@@ -114,6 +126,25 @@ fun main() = application {
     val connectionState by connectionManager.connectionState.collectAsState()
     val themeMode by settingsRepository.themeMode.collectAsState()
 
+    LaunchedEffect(Unit) {
+        viewModel.uiEffects.collect { effect ->
+            when (effect) {
+                is UiEffect.OpenFile -> {
+                    localFileRepository.openFile(effect.file, effect.mimeType)
+                }
+                is UiEffect.ShareFile -> {
+                    localFileRepository.shareFile(effect.file, effect.mimeType)
+                }
+                is UiEffect.OpenFolder -> {
+                    localFileRepository.shareFile(effect.file, "")
+                }
+                is UiEffect.ShowToast -> {
+                    println("TOAST: ${effect.message}")
+                }
+            }
+        }
+    }
+
     Window(
         onCloseRequest = {
             stopSatellite()
@@ -174,7 +205,10 @@ fun main() = application {
                 onStopRadar = { viewModel.stopRadar() },
                 onResetIdentity = { viewModel.resetIdentity() },
                 onBackIntercept = { /* N/A */ },
-                settingsRepository = settingsRepository
+                settingsRepository = settingsRepository,
+                onOpenLocalFile = { viewModel.openLocalFile(it) },
+                onDeleteHistoryItem = { path, deleteFile -> viewModel.deleteTransferItem(path, deleteFile) },
+                onOpenFolder = { viewModel.openFolderForDownloadedFile(it) }
             )
         }
     }

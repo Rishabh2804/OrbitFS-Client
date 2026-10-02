@@ -19,13 +19,20 @@ class DesktopLocalFileRepository : LocalFileRepository {
 
     override fun openFile(file: File, mimeType: String) {
         try {
-            if (Desktop.isDesktopSupported()) {
-                Desktop.getDesktop().open(file)
-            } else {
-                // Fallback for some Linux/systems
-                val process = Runtime.getRuntime().exec(arrayOf("open", file.absolutePath))
-                if (process.waitFor() != 0) {
-                     Runtime.getRuntime().exec(arrayOf("xdg-open", file.absolutePath))
+            val os = System.getProperty("os.name").lowercase()
+            when {
+                os.contains("mac") -> {
+                    ProcessBuilder("open", file.absolutePath).start()
+                }
+                Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN) -> {
+                    Desktop.getDesktop().open(file)
+                }
+                else -> {
+                    if (os.contains("win")) {
+                        ProcessBuilder("cmd", "/c", "start", "", file.absolutePath).start()
+                    } else {
+                        ProcessBuilder("xdg-open", file.absolutePath).start()
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -35,16 +42,31 @@ class DesktopLocalFileRepository : LocalFileRepository {
 
     override fun shareFile(file: File, mimeType: String) {
         try {
-            if (Desktop.isDesktopSupported()) {
-                Desktop.getDesktop().browseFileDirectory(file)
+            val os = System.getProperty("os.name").lowercase()
+            when {
+                os.contains("mac") -> {
+                    ProcessBuilder("open", "-R", file.absolutePath).start()
+                }
+                Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE_FILE_DIR) -> {
+                    Desktop.getDesktop().browseFileDirectory(file)
+                }
+                else -> {
+                    val parent = file.parentFile ?: file
+                    openFile(parent, "")
+                }
             }
         } catch (e: Exception) {
-            OrbitLogger.e(TAG, "Failed to browse directory", e)
+            OrbitLogger.e(TAG, "Failed to browse/reveal directory on desktop", e)
         }
     }
 
     override suspend fun getDownloadOutputStream(fileName: String, targetDirUri: String?): Pair<String?, OutputStream?> {
-        val dir = File(System.getProperty("user.home"), "Downloads/OrbitFS").apply { mkdirs() }
+        val dir = if (!targetDirUri.isNullOrBlank()) {
+            File(targetDirUri)
+        } else {
+            File(System.getProperty("user.home"), "Downloads/OrbitFS")
+        }
+        dir.mkdirs()
         val file = File(dir, fileName)
         return file.absolutePath to file.outputStream()
     }

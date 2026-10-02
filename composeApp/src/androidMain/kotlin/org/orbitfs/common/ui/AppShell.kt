@@ -1,5 +1,6 @@
 package org.orbitfs.common.ui
 
+import android.app.DownloadManager
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -12,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.orbitfs.android.MainActivity
+import org.orbitfs.android.client.NotificationSignals
 import org.orbitfs.common.data.SavedHost
 import org.orbitfs.common.data.SettingsRepository
 import org.orbitfs.common.model.FileInfo
@@ -44,7 +46,15 @@ fun AndroidAppShell(
             when (effect) {
                 is UiEffect.ShowToast -> Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
                 is UiEffect.OpenFile -> {
-                    val uri = FileProvider.getUriForFile(context, "org.orbitfs.android.kmp.fileprovider", effect.file)
+                    val uri = if (effect.file.path.startsWith("content://")) {
+                        Uri.parse(effect.file.path)
+                    } else {
+                        try {
+                            FileProvider.getUriForFile(context, "org.orbitfs.android.kmp.fileprovider", effect.file)
+                        } catch (_: Exception) {
+                            Uri.fromFile(effect.file)
+                        }
+                    }
                     val intent = Intent(Intent.ACTION_VIEW).apply {
                         setDataAndType(uri, effect.mimeType)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -63,7 +73,15 @@ fun AndroidAppShell(
                     }
                 }
                 is UiEffect.ShareFile -> {
-                    val uri = FileProvider.getUriForFile(context, "org.orbitfs.android.kmp.fileprovider", effect.file)
+                    val uri = if (effect.file.path.startsWith("content://")) {
+                        Uri.parse(effect.file.path)
+                    } else {
+                        try {
+                            FileProvider.getUriForFile(context, "org.orbitfs.android.kmp.fileprovider", effect.file)
+                        } catch (_: Exception) {
+                            Uri.fromFile(effect.file)
+                        }
+                    }
                     val intent = Intent(Intent.ACTION_SEND).apply {
                         type = effect.mimeType
                         putExtra(Intent.EXTRA_STREAM, uri)
@@ -71,7 +89,57 @@ fun AndroidAppShell(
                     }
                     context.startActivity(Intent.createChooser(intent, "Share File"))
                 }
+                is UiEffect.OpenFolder -> {
+                    val targetPath = effect.file.path
+                    if (targetPath.startsWith("content://")) {
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(Uri.parse(targetPath), "vnd.android.document/directory")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        try {
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            try {
+                                context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                })
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Could not open folder", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        val parentDir = effect.file.parentFile ?: effect.file
+                        val uri = try {
+                            FileProvider.getUriForFile(context, "org.orbitfs.android.kmp.fileprovider", parentDir)
+                        } catch (_: Exception) {
+                            Uri.fromFile(parentDir)
+                        }
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "resource/folder")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        try {
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            try {
+                                context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                })
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Could not open folder", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
             }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        NotificationSignals.cancelRequest.collect { path ->
+            viewModel.cancelDownload(path)
         }
     }
 
@@ -174,7 +242,9 @@ fun AndroidAppShell(
             onCheckPermissions = { (context as MainActivity).checkPermissions() },
             onBackIntercept = { backActionLambda = it },
             settingsRepository = settingsRepository,
-            onOpenLocalFile = { viewModel.openLocalFile(it) }
+            onOpenLocalFile = { viewModel.openLocalFile(it) },
+            onDeleteHistoryItem = { path, deleteFile -> viewModel.deleteTransferItem(path, deleteFile) },
+            onOpenFolder = { viewModel.openFolderForDownloadedFile(it) }
         )
     }
 }

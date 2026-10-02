@@ -21,7 +21,8 @@ captures/
 *.gcda
 
 ### Build ###
-/build/
-/app/build/
+build/
+**/build/
+.kotlin/
 *.jar
 !.gitignore

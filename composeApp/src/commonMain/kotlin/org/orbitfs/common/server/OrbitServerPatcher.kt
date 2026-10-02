@@ -207,8 +207,11 @@ object OrbitServerPatcher {
         
         return try {
             RandomAccessFile(target.toFile(), "r").use { raf ->
+                val fileSize = raf.length()
+                if (offset >= fileSize) return byteArrayOf()
                 raf.seek(offset)
-                val len = minOf(count.toLong(), raf.length() - offset).coerceAtLeast(0).toInt()
+                val len = minOf(count.toLong(), fileSize - offset).coerceAtLeast(0).toInt()
+                if (len <= 0) return byteArrayOf()
                 val buf = ByteArray(len)
                 val read = raf.read(buf)
                 if (read <= 0) byteArrayOf() else if (read < len) buf.copyOf(read) else buf

@@ -7,6 +7,7 @@ import org.orbitfs.client.CachingOrbitFSClient
 import org.orbitfs.common.data.ConnectionConfig
 import org.orbitfs.common.model.FileInfo
 import org.orbitfs.common.util.OrbitLogger
+import java.io.IOException
 import java.io.OutputStream
 
 class OrbitFSClientWrapper(private val config: ConnectionConfig) {
@@ -75,13 +76,16 @@ class OrbitFSClientWrapper(private val config: ConnectionConfig) {
         val c = ensureConnected()
         val serverPath = preparePath(path)
         val stat = c.stat(serverPath)
-        val size = stat.size().toInt()
+        val size = stat.size()
         
-        if (size == 0) return@withContext byteArrayOf()
+        if (size <= 0L) return@withContext byteArrayOf()
+        if (size > 50 * 1024 * 1024) {
+            throw IllegalArgumentException("File too large to read into memory (${size / (1024 * 1024)}MB)")
+        }
         
         val handle = c.open(serverPath)
         try {
-            c.read(handle, 0, size)
+            c.read(handle, 0, size.toInt())
         } finally {
             c.close(handle)
         }
@@ -100,10 +104,14 @@ class OrbitFSClientWrapper(private val config: ConnectionConfig) {
             while (offset < totalSize) {
                 val count = minOf(bufferSize.toLong(), totalSize - offset).toInt()
                 val chunk = c.read(handle, offset, count)
+                if (chunk.isEmpty()) {
+                    throw IOException("Stream error: Received 0 bytes from server at offset $offset / $totalSize")
+                }
                 output.write(chunk)
                 offset += chunk.size
                 onProgress(offset, totalSize)
             }
+            output.flush()
         } finally {
             c.close(handle)
         }

@@ -75,7 +75,9 @@ fun SharedAppContent(
     onCheckPermissions: () -> Unit = {},
     onBackIntercept: ((() -> Boolean) -> Unit)? = null,
     settingsRepository: SettingsRepository? = null,
-    onOpenLocalFile: (FileDownloadState) -> Unit = {}
+    onOpenLocalFile: (FileDownloadState) -> Unit = {},
+    onDeleteHistoryItem: (String, Boolean) -> Unit = { _, _ -> },
+    onOpenFolder: (FileDownloadState) -> Unit = {}
 ) {
     val isConnected = connectionState is ConnectionState.Connected
     
@@ -232,10 +234,6 @@ fun SharedAppContent(
                             onToggleServer = onToggleSatellite,
                             onPickFolder = onPickSatelliteFolder,
                             onUpdateConfig = onUpdateSatelliteConfig,
-                            onOrbiterClick = { info ->
-                                onAddHost(info.name, info.host, info.port, info.nodeId)
-                                hubPageIndex = 1
-                            },
                             onPermissionStatusClick = onCheckPermissions
                         )
                         4 -> SettingsScreen(
@@ -258,6 +256,7 @@ fun SharedAppContent(
                                 state = browserState,
                                 serverName = connectionState.config.name,
                                 serverAddress = "${connectionState.config.host}:${connectionState.config.port}",
+                                downloadStates = downloadStates,
                                 onBack = { onDisconnect() },
                                 onSearchClick = { showSearchModal = true },
                                 onBreadcrumbClick = { onNavigateTo(it) },
@@ -293,7 +292,9 @@ fun SharedAppContent(
                             onClearHistory = { onClearHistory() },
                             onCancelTransfer = { onCancelDownload(it) },
                             onRetryTransfer = { state -> onRetryDownload(state.path) },
-                            onOpenDownloadedFile = onOpenLocalFile
+                            onOpenDownloadedFile = onOpenLocalFile,
+                            onDeleteHistoryItem = onDeleteHistoryItem,
+                            onOpenFolder = onOpenFolder
                         )
                         2 -> {
                             val currentHost = hosts.find { it.host == connectionState.config.host && it.port == connectionState.config.port }

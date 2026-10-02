@@ -14,5 +14,6 @@ data class BrowserState(
     val selectedPaths: Set<String> = emptySet(),
     val sortType: SortType = SortType.Name,
     val sortOrder: SortOrder = SortOrder.Ascending,
-    val fileToConfirmLargeDownload: FileInfo? = null
+    val fileToConfirmLargeDownload: FileInfo? = null,
+    val loadingItemPaths: Set<String> = emptySet()
 )

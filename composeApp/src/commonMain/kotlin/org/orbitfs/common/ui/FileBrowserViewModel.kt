@@ -212,6 +212,7 @@ class FileBrowserViewModel(
         }
         
         viewModelScope.launch {
+            _state.update { it.copy(loadingItemPaths = it.loadingItemPaths + file.path) }
             try {
                 val tmp = File(localFileRepository.getCacheDir(), file.name)
                 tmp.outputStream().use { output ->
@@ -232,6 +233,8 @@ class FileBrowserViewModel(
                 _uiEffects.send(UiEffect.OpenFile(tmp, detectedMime))
             } catch (e: Exception) {
                 _uiEffects.send(UiEffect.ShowToast("Open failed: ${e.message}"))
+            } finally {
+                _state.update { it.copy(loadingItemPaths = it.loadingItemPaths - file.path) }
             }
         }
     }
@@ -240,44 +243,141 @@ class FileBrowserViewModel(
      * Opens a file that was already downloaded (from history).
      */
     fun openLocalFile(state: FileDownloadState) {
-        val file = File(state.path) // Path in state is local path after download
-        if (file.exists()) {
-            val mime = MimeTypeUtil.getMimeType(file)
+        val targetPath = state.savedToPath.ifEmpty { state.path }
+        if (targetPath.startsWith("content://")) {
+            val mime = MimeTypeUtil.getMimeType(File(state.fileName))
             viewModelScope.launch {
-                _uiEffects.send(UiEffect.OpenFile(file, mime))
+                _uiEffects.send(UiEffect.OpenFile(File(targetPath), mime))
             }
         } else {
-            viewModelScope.launch {
-                _uiEffects.send(UiEffect.ShowToast("Local file not found"))
+            val file = File(targetPath)
+            if (file.exists()) {
+                val mime = MimeTypeUtil.getMimeType(file)
+                viewModelScope.launch {
+                    _uiEffects.send(UiEffect.OpenFile(file, mime))
+                }
+            } else {
+                viewModelScope.launch {
+                    _uiEffects.send(UiEffect.ShowToast("Local file not found"))
+                }
+            }
+        }
+    }
+
+    /**
+     * Navigates to or opens the folder containing the downloaded file.
+     */
+    fun openFolderForDownloadedFile(state: FileDownloadState) {
+        val targetPath = state.savedToPath.ifEmpty { state.path }
+        viewModelScope.launch {
+            if (targetPath.startsWith("content://")) {
+                _uiEffects.send(UiEffect.OpenFolder(File(targetPath)))
+            } else {
+                val f = File(targetPath)
+                if (f.exists() || f.parentFile?.exists() == true) {
+                    _uiEffects.send(UiEffect.OpenFolder(f))
+                } else {
+                    _uiEffects.send(UiEffect.ShowToast("Folder not found"))
+                }
             }
         }
     }
 
     fun downloadFile(file: FileInfo, targetDirUri: String? = null) {
-        viewModelScope.launch {
+        val job = viewModelScope.launch {
+            var resolvedLocalPath = ""
             try {
-                // localFileRepository implementation should handle the Uri if provided
-                val (path, out) = localFileRepository.getDownloadOutputStream(file.name, targetDirUri)
+                _uiEffects.send(UiEffect.ShowToast("Download started: ${file.name}"))
+                val (localPath, out) = localFileRepository.getDownloadOutputStream(file.name, targetDirUri)
+                resolvedLocalPath = localPath ?: ""
+                updateProgress(file, 0, file.size, resolvedLocalPath)
                 if (out != null) {
                     out.use { stream ->
                         val client = connectionManager.getClient()
-                        client.streamFile(file.path, stream) { p, t -> updateProgress(file, p, t) }
+                        client.streamFile(file.path, stream) { p, t -> updateProgress(file, p, t, resolvedLocalPath) }
                     }
                     localFileRepository.finishDownload(file.name)
                     _uiEffects.send(UiEffect.ShowToast("Downloaded ${file.name}"))
+                } else {
+                    val msg = "Could not open destination storage location"
+                    updateProgress(file, 0, file.size, resolvedLocalPath, isFailed = true, errorMsg = msg)
+                    _uiEffects.send(UiEffect.ShowToast("Download failed: $msg"))
                 }
             } catch (e: Exception) {
-                _uiEffects.send(UiEffect.ShowToast("Download failed: ${e.message}"))
+                val currentStatus = _downloadStates.value[file.path]?.status
+                if (currentStatus == DownloadStatus.COMPLETE) {
+                    return@launch
+                }
+                val lastDownloaded = _downloadStates.value[file.path]?.bytesDownloaded ?: 0L
+                if (e is CancellationException) {
+                    _downloadStates.update { map ->
+                        val existing = map[file.path]
+                        if (existing != null) map + (file.path to existing.copy(status = DownloadStatus.CANCELLED, speedBytesPerSecond = 0L))
+                        else map
+                    }
+                    _uiEffects.send(UiEffect.ShowToast("Download cancelled: ${file.name}"))
+                } else {
+                    val msg = e.message ?: "Unknown transfer error"
+                    OrbitLogger.e(TAG, "Download failed for ${file.name}", e)
+                    updateProgress(file, lastDownloaded, file.size, resolvedLocalPath, isFailed = true, errorMsg = msg)
+                    _uiEffects.send(UiEffect.ShowToast("Download failed: $msg"))
+                }
+            } finally {
+                downloadJobs.remove(file.path)
             }
         }
+        downloadJobs[file.path] = job
     }
 
-    private fun updateProgress(file: FileInfo, p: Long, t: Long) {
-        _downloadStates.update { it + (file.path to FileDownloadState(file.path, file.name, p, t, if (p >= t && t > 0) DownloadStatus.COMPLETE else DownloadStatus.IN_PROGRESS)) }
+    private fun updateProgress(file: FileInfo, p: Long, t: Long, savedToPath: String = "", isFailed: Boolean = false, errorMsg: String = "") {
+        val now = System.currentTimeMillis()
+        _downloadStates.update { currentMap ->
+            val existing = currentMap[file.path]
+            val localPath = if (savedToPath.isNotEmpty()) savedToPath else (existing?.savedToPath ?: "")
+            
+            val lastTime = existing?.lastUpdated ?: now
+            val lastBytes = existing?.bytesDownloaded ?: 0L
+            val timeDeltaMs = now - lastTime
+            val bytesDelta = p - lastBytes
+            
+            val (speed, updatedLastTime) = if (timeDeltaMs >= 250 && bytesDelta >= 0) {
+                Pair((bytesDelta * 1000) / timeDeltaMs, now)
+            } else if (p >= t && t > 0) {
+                Pair(0L, now)
+            } else {
+                Pair(existing?.speedBytesPerSecond ?: 0L, existing?.lastUpdated ?: now)
+            }
+
+            val currentDownloaded = if (isFailed && p == 0L && (existing?.bytesDownloaded ?: 0L) > 0L) {
+                existing!!.bytesDownloaded
+            } else p
+
+            val status = when {
+                isFailed -> DownloadStatus.FAILED
+                p >= t && t > 0 -> DownloadStatus.COMPLETE
+                else -> DownloadStatus.IN_PROGRESS
+            }
+
+            // Sync Android system notification progress live
+            localFileRepository.updateDownloadProgress(file.name, currentDownloaded, t)
+
+            currentMap + (file.path to FileDownloadState(
+                path = file.path,
+                fileName = file.name,
+                bytesDownloaded = currentDownloaded,
+                totalBytes = t,
+                status = status,
+                savedToPath = localPath,
+                errorMessage = errorMsg,
+                speedBytesPerSecond = if (status == DownloadStatus.COMPLETE || isFailed) 0L else speed,
+                lastUpdated = updatedLastTime
+            ))
+        }
     }
 
     fun shareFile(file: FileInfo) {
         viewModelScope.launch {
+            _state.update { it.copy(loadingItemPaths = it.loadingItemPaths + file.path) }
             try {
                 val tmp = File(localFileRepository.getCacheDir(), "share_" + file.name)
                 tmp.outputStream().use { output ->
@@ -287,6 +387,8 @@ class FileBrowserViewModel(
                 _uiEffects.send(UiEffect.ShareFile(tmp, file.mimeType))
             } catch (e: Exception) {
                 _uiEffects.send(UiEffect.ShowToast("Share failed"))
+            } finally {
+                _state.update { it.copy(loadingItemPaths = it.loadingItemPaths - file.path) }
             }
         }
     }
@@ -325,26 +427,50 @@ class FileBrowserViewModel(
         }
     }
 
-    fun cancelDownload(path: String) { downloadJobs[path]?.cancel() }
+    fun cancelDownload(path: String) {
+        val cleanPath = path.trimStart('/')
+        val jobEntry = downloadJobs.entries.find { it.key.trimStart('/') == cleanPath }
+        
+        // 1. Immediately mark status as CANCELLED in UI
+        _downloadStates.update { map ->
+            val existing = map[path] ?: map[jobEntry?.key]
+            if (existing != null) {
+                map + (existing.path to existing.copy(status = DownloadStatus.CANCELLED, speedBytesPerSecond = 0L))
+            } else map
+        }
+        
+        // 2. Cancel coroutine job
+        jobEntry?.value?.cancel()
+        downloadJobs.remove(jobEntry?.key ?: path)
+        
+        // 3. Force disconnect TCP socket to unblock any pending socket read
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                connectionManager.getClient().disconnect()
+            } catch (e: Exception) {
+                OrbitLogger.e(TAG, "Disconnect error on cancel: ${e.message}")
+            }
+        }
+        
+        _uiEffects.trySend(UiEffect.ShowToast("Download cancelled"))
+    }
+
     fun clearTransferHistory() { _downloadStates.update { m -> m.filter { it.value.status == DownloadStatus.IN_PROGRESS } } }
+
+    fun deleteTransferItem(path: String, deleteFileFromDisk: Boolean = false) {
+        val st = _downloadStates.value[path]
+        if (st != null && deleteFileFromDisk && st.savedToPath.isNotEmpty() && !st.savedToPath.startsWith("content://")) {
+            try {
+                val f = File(st.savedToPath)
+                if (f.exists()) f.delete()
+            } catch (_: Exception) {}
+        }
+        _downloadStates.update { currentMap -> currentMap - path }
+    }
 
     fun retryDownload(path: String) {
         val st = _downloadStates.value[path] ?: return
-        viewModelScope.launch {
-            try {
-                val (outputPath, out) = localFileRepository.getDownloadOutputStream(st.fileName)
-                if (out != null) {
-                    out.use { stream ->
-                        val client = connectionManager.getClient()
-                        client.streamFile(st.path, stream) { p, t -> updateProgress(FileInfo(st.fileName, st.path, t, false), p, t) }
-                    }
-                    localFileRepository.finishDownload(st.fileName)
-                    _uiEffects.send(UiEffect.ShowToast("Retry complete"))
-                }
-            } catch (e: Exception) {
-                _uiEffects.send(UiEffect.ShowToast("Retry failed"))
-            }
-        }
+        downloadFile(FileInfo(name = st.fileName, path = st.path, size = st.totalBytes, isDirectory = false))
     }
 
     fun startRadar() { orbitRadar.startDiscovery(settingsRepository.nodeId.value) }
@@ -406,6 +532,17 @@ class FileBrowserViewModel(
     fun dismissLargeDownload() { _state.update { it.copy(fileToConfirmLargeDownload = null) } }
     
     fun resetIdentity() {
-        settingsRepository.resetIdentity()
+        val wasRunning = settingsRepository.satelliteEnabled.value
+        viewModelScope.launch {
+            if (wasRunning) {
+                onToggleSatellite() // STOP active satellite & radar registration
+                delay(1000)
+            }
+            settingsRepository.resetIdentity()
+            delay(500)
+            if (wasRunning) {
+                onToggleSatellite() // RE-LAUNCH satellite with new node ID & identity
+            }
+        }
     }
 }

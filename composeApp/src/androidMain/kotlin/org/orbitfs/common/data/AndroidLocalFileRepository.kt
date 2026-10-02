@@ -2,6 +2,7 @@ package org.orbitfs.common.data
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -12,6 +13,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import org.orbitfs.android.R
+import org.orbitfs.android.client.NotificationActionReceiver
+import org.orbitfs.common.util.MimeTypeUtil
 import org.orbitfs.common.util.PlatformContext
 import java.io.File
 import java.io.OutputStream
@@ -87,6 +90,11 @@ class AndroidLocalFileRepository(private val platformContext: PlatformContext) :
         return file.absolutePath to file.outputStream()
     }
 
+    override fun updateDownloadProgress(fileName: String, bytesDownloaded: Long, totalBytes: Long) {
+        val pct = if (totalBytes > 0) ((bytesDownloaded * 100) / totalBytes).toInt() else 0
+        showDownloadNotification(fileName, pct, 100, bytesDownloaded, totalBytes)
+    }
+
     override fun finishDownload(id: String) {
         val name = id.substringAfterLast("/")
         val builder = NotificationCompat.Builder(context, "downloads")
@@ -96,19 +104,44 @@ class AndroidLocalFileRepository(private val platformContext: PlatformContext) :
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setAutoCancel(true)
         
-        notificationManager.notify(id.hashCode(), builder.build())
+        notificationManager.notify(name.hashCode(), builder.build())
     }
 
     override fun deleteDownload(id: String) {}
 
-    private fun showDownloadNotification(name: String, progress: Int, total: Int) {
+    private fun showDownloadNotification(name: String, progress: Int, total: Int, bytesDownloaded: Long = 0L, totalBytes: Long = 0L) {
+        val cancelIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_CANCEL_DOWNLOAD
+            putExtra(NotificationActionReceiver.EXTRA_FILE_PATH, name)
+        }
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val cancelPendingIntent = PendingIntent.getBroadcast(
+            context,
+            name.hashCode(),
+            cancelIntent,
+            flags
+        )
+
+        val progressText = if (totalBytes > 0) {
+            "${MimeTypeUtil.formatFileSize(bytesDownloaded)} / ${MimeTypeUtil.formatFileSize(totalBytes)}"
+        } else name
+
         val builder = NotificationCompat.Builder(context, "downloads")
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Downloading File")
-            .setContentText(name)
+            .setContentTitle("Downloading: $name")
+            .setContentText(progressText)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setProgress(total, progress, total <= 0)
             .setOngoing(progress < total)
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Cancel",
+                cancelPendingIntent
+            )
         
         notificationManager.notify(name.hashCode(), builder.build())
     }
