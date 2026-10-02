@@ -121,6 +121,7 @@ Quick build instructions. For full platform instructions, see [docs/INSTALLATION
 
 ## 📑 Documentation Index
 
+- [UI & Dark Space Screen Gallery (docs/UI_PREVIEW.md)](docs/UI_PREVIEW.md)
 - [Feature Specification (docs/FEATURES.md)](docs/FEATURES.md)
 - [System Architecture (docs/ARCHITECTURE.md)](docs/ARCHITECTURE.md)
 - [Low-Level Design (docs/DESIGN.md)](docs/DESIGN.md)
