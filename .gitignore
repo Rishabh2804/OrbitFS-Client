@@ -24,5 +24,7 @@ captures/
 build/
 **/build/
 .kotlin/
+.artifacts/
 *.jar
+*.log
 !.gitignore
