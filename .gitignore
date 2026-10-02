@@ -26,5 +26,5 @@ build/
 .kotlin/
 .artifacts/
 *.jar
-*.log
+!**/libs/*.jar
 !.gitignore
