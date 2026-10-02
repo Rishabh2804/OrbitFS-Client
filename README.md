@@ -1,4 +1,4 @@
-# OrbitFS — Cross-Platform P2P File System & Local Orbit Network
+# OrbitFS Client — Cross-Platform P2P File System & Local Orbit Network
 
 > *"Your Data, in Local Orbit."*
 
@@ -7,26 +7,43 @@
 [![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen)](#building--running)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-OrbitFS is a privacy-first, local-only, high-bandwidth peer-to-peer file sharing and storage infrastructure engineered for **Android** and **Desktop (macOS, Windows, Linux)**. Built using **Kotlin Multiplatform (KMP)** and **Compose Multiplatform (CMP)**, OrbitFS operates completely independent of cloud servers, third-party proxies, and internet routing—delivering line-rate file streaming and sub-millisecond latencies across local area networks (LAN/WLAN).
+OrbitFS Client is a privacy-first, local-only, high-bandwidth peer-to-peer file sharing application engineered for **Android** and **Desktop (macOS, Windows, Linux)**. Built using **Kotlin Multiplatform (KMP)** and **Compose Multiplatform (CMP)**, OrbitFS operates completely independent of cloud servers, third-party proxies, and internet routing—delivering line-rate file streaming and sub-millisecond latencies across local area networks (LAN/WLAN).
 
 ---
 
-## 🌟 Key Technical Highlights
+## 📚 Table of Contents
 
-- **Custom Binary-Framed RPC Protocol**: Length-prefixed 4-byte big-endian JSON framing protocol operating over raw TCP sockets (`READ`, `WRITE`, `STAT`, `LIST`), optimized with dynamic 64KB–256KB chunk buffering.
-- **Dual-Role Satellite Node Architecture**: Every instance functions both as an active file explorer client and as a background satellite file server.
-- **Zero-Config UDP Radar Discovery**: High-performance UDP broadcast beaconing on Port 9999 with Android `MulticastLock` integration and dead-man timer stale-peer pruning for instant peer discovery.
-- **Ghost Launcher Runtime Interop**: Bypasses Android ART runtime incompatibilities with Java 21 Virtual Threads using `sun.misc.Unsafe` reflection patches to execute server instances natively inside Android.
-- **Strict Sandbox Path Canonicalization**: Enforces strict `SandboxGuard` path canonicalization to eliminate directory traversal vulnerability vectors (`../`).
-- **Complete Transfer Engine**:
-  - Live bandwidth speed calculations (`KB/s`, `MB/s`) using time-delta sampling.
-  - Notification progress tracking with instant **Cancel / Stop Download** action buttons.
+- [Key Features Overview](#-key-features-overview)
+- [Architecture & Tech Stack](#%EF%B8%8F-architecture--tech-stack)
+- [Low-Level Design (LLD) Summary](#-low-level-design-lld-summary)
+- [Repository Structure](#-repository-structure)
+- [Installation & Build Guide](#-installation--build-guide)
+- [Documentation Index](#-documentation-index)
+- [License](#-license)
+
+---
+
+## 🌟 Key Features Overview
+
+Below is a brief summary of OrbitFS Client capabilities. For in-depth technical documentation, visit [docs/FEATURES.md](docs/FEATURES.md).
+
+- **Dual-Role Satellite Node Architecture**: Operates as both an active file explorer client and a background satellite file server on every device.
+- **Custom Binary-Framed RPC Protocol**: Length-prefixed 4-byte big-endian JSON framing protocol over TCP (`READ`, `WRITE`, `STAT`, `LIST`, `OPEN`, `CLOSE`).
+- **Zero-Config UDP Radar Discovery**: UDP broadcast beacons (Port 9999) with Android `MulticastLock` and dead-man timer stale-peer pruning.
+- **Ghost Launcher Runtime Interop**: Executes Java 21 server instances inside Android ART using `sun.misc.Unsafe` reflection desugaring patches.
+- **Strict Sandbox Path Canonicalization**: `SandboxGuard` canonical path validation prevents directory traversal security vulnerabilities.
+- **Advanced Transfer Engine**:
+  - Live bandwidth speed calculation (`KB/s`, `MB/s`) using time-delta sampling.
+  - Ongoing system notification progress syncing with instant **Cancel / Stop Download** actions.
   - Native **Show in Folder** / **Navigate to Location** support across Android SAF and macOS Finder (`open -R`).
   - Gesture-based `HorizontalPager` tab swiping for active and historical transfers.
+- **Randomized Identity Generation**: Auto-generates unique Node IDs, space-themed Pilot Names, and Pilot Avatars on setup and profile reset.
 
 ---
 
-## 🏗️ Tech Stack & Architecture
+## 🏗️ Architecture & Tech Stack
+
+For full architectural patterns and threading details, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```
                        ┌────────────────────────────────────────┐
@@ -52,45 +69,24 @@ OrbitFS is a privacy-first, local-only, high-bandwidth peer-to-peer file sharing
 
 | Layer | Technologies & Frameworks |
 |---|---|
-| **Core Languages** | Kotlin, Java 21 |
+| **Languages** | Kotlin, Java 21 |
 | **Multiplatform UI** | Compose Multiplatform, Jetpack Compose, Material 3 Design |
-| **Concurrency & Async** | Kotlin Coroutines, Flow, StateFlow, Channels |
+| **Async & State** | Kotlin Coroutines, Flow, StateFlow, Channels |
 | **Networking & Protocols** | Custom RPC over TCP Sockets, UDP Broadcast (Port 9999), DatagramSocket |
 | **Runtime Interop** | `sun.misc.Unsafe` reflection patches, Java NIO, Storage Access Framework (SAF) |
 | **Build & CI** | Gradle Kotlin DSL, GitHub Actions |
 
 ---
 
-## 🚀 Getting Started
+## 📐 Low-Level Design (LLD) Summary
 
-### Prerequisites
-- **JDK 21** or higher
-- **Android SDK** (API Level 26–35)
-- **Gradle 8.x**
+OrbitFS uses a framed TCP socket protocol with 4-byte big-endian length headers. For sequence diagrams and state machine specifications, see [docs/DESIGN.md](docs/DESIGN.md).
 
----
-
-### Building & Running
-
-#### 1. Android Debug Build
-```bash
-./gradlew :composeApp:assembleDebug
 ```
-*Output APK:* `composeApp/build/outputs/apk/debug/composeApp-debug.apk`
-
-#### 2. Run Android App on Connected Device / Emulator
-```bash
-./gradlew :composeApp:installDebug
-```
-
-#### 3. Run Desktop App (macOS, Windows, Linux)
-```bash
-./gradlew :composeApp:run
-```
-
-#### 4. Package Desktop Distribution (JAR / DMG / DEB)
-```bash
-./gradlew :composeApp:desktopJar
+┌───────────────────────────┬──────────────────────────────────────────┐
+│   Length Header (4 bytes) │         JSON Payload (Variable)          │
+│   Big-Endian 32-bit Int   │   {"id":1, "method":"READ", ...}         │
+└───────────────────────────┴──────────────────────────────────────────┘
 ```
 
 ---
@@ -98,7 +94,7 @@ OrbitFS is a privacy-first, local-only, high-bandwidth peer-to-peer file sharing
 ## 📁 Repository Structure
 
 ```
-OrbitFS-Android/
+OrbitFS-Client/
 ├── composeApp/
 │   ├── src/
 │   │   ├── commonMain/      # Shared ViewModels, UI Screens, RPC Client Wrapper, Models
@@ -106,10 +102,54 @@ OrbitFS-Android/
 │   │   └── desktopMain/     # Desktop JVM Launcher, AWT/ProcessBuilder Handlers, Desktop Repository
 │   └── libs/
 │       └── orbitfs-core-0.1.0.jar   # Core Pure-Java RPC & Transport Library
+├── docs/                    # Detailed technical sub-documentation
+│   ├── FEATURES.md          # Feature specification & capability list
+│   ├── ARCHITECTURE.md      # System architecture & KMP patterns
+│   ├── DESIGN.md            # Low-Level Design (LLD) & protocol spec
+│   └── INSTALLATION.md      # Installation & build instructions
 ├── AGENT.md                 # Technical flight recorder and architectural journal
-├── DESIGN.md                # System design specification
-└── README.md                # Project documentation
+└── README.md                # Project README
 ```
+
+---
+
+## 🛠️ Installation & Build Guide
+
+Quick build instructions. For full platform instructions, see [docs/INSTALLATION.md](docs/INSTALLATION.md).
+
+### Prerequisites
+- **JDK 21** or higher
+- **Android SDK** (API Levels 26–35)
+- **Gradle 8.x**
+
+### Quick Commands
+
+- **Build Android Debug APK:**
+  ```bash
+  ./gradlew :composeApp:assembleDebug
+  ```
+- **Install & Run on Android Device / Emulator:**
+  ```bash
+  ./gradlew :composeApp:installDebug
+  ```
+- **Run Desktop App (macOS / Windows / Linux):**
+  ```bash
+  ./gradlew :composeApp:run
+  ```
+- **Package Desktop Executable / JAR:**
+  ```bash
+  ./gradlew :composeApp:desktopJar
+  ```
+
+---
+
+## 📑 Documentation Index
+
+- [Feature Specification (docs/FEATURES.md)](docs/FEATURES.md)
+- [System Architecture (docs/ARCHITECTURE.md)](docs/ARCHITECTURE.md)
+- [Low-Level Design (docs/DESIGN.md)](docs/DESIGN.md)
+- [Installation Guide (docs/INSTALLATION.md)](docs/INSTALLATION.md)
+- [Technical Flight Recorder (AGENT.md)](AGENT.md)
 
 ---
 
