@@ -14,6 +14,7 @@ OrbitFS Client is a privacy-first, local-only, high-bandwidth peer-to-peer file 
 ## 📚 Table of Contents
 
 - [Key Features Overview](#-key-features-overview)
+- [Interface Preview](#-interface-preview)
 - [Architecture & Tech Stack](#%EF%B8%8F-architecture--tech-stack)
 - [Low-Level Design (LLD) Summary](#-low-level-design-lld-summary)
 - [Repository Structure](#-repository-structure)
@@ -25,19 +26,30 @@ OrbitFS Client is a privacy-first, local-only, high-bandwidth peer-to-peer file 
 
 ## 🌟 Key Features Overview
 
-Below is a brief summary of OrbitFS Client capabilities. For in-depth technical documentation, visit [docs/FEATURES.md](docs/FEATURES.md).
+Below is a brief summary of OrbitFS Client capabilities. For in-depth technical documentation and visual tour, visit [docs/FEATURES.md](docs/FEATURES.md).
 
 - **Dual-Role Satellite Node Architecture**: Operates as both an active file explorer client and a background satellite file server on every device.
 - **Custom Binary-Framed RPC Protocol**: Length-prefixed 4-byte big-endian JSON framing protocol over TCP (`READ`, `WRITE`, `STAT`, `LIST`, `OPEN`, `CLOSE`).
 - **Zero-Config UDP Radar Discovery**: UDP broadcast beacons (Port 9999) with Android `MulticastLock` and dead-man timer stale-peer pruning.
 - **Ghost Launcher Runtime Interop**: Executes Java 21 server instances inside Android ART using `sun.misc.Unsafe` reflection desugaring patches.
 - **Strict Sandbox Path Canonicalization**: `SandboxGuard` canonical path validation prevents directory traversal security vulnerabilities.
-- **Advanced Transfer Engine**:
-  - Live bandwidth speed calculation (`KB/s`, `MB/s`) using time-delta sampling.
-  - Ongoing system notification progress syncing with instant **Cancel / Stop Download** actions.
-  - Native **Show in Folder** / **Navigate to Location** support across Android SAF and macOS Finder (`open -R`).
-  - Gesture-based `HorizontalPager` tab swiping for active and historical transfers.
-- **Randomized Identity Generation**: Auto-generates unique Node IDs, space-themed Pilot Names, and Pilot Avatars on setup and profile reset.
+- **Advanced Transfer Engine**: Live speed calculation, progress notification syncing, one-tap cancel actions, and native **Show in Folder** navigation.
+
+---
+
+## 📱 Interface Preview
+
+<p align="center">
+  <img src="docs/screenshots/01_node_hub.png" width="180" alt="Node Hub"/>
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/02_radar_discovery.png" width="180" alt="Radar Discovery"/>
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/03_satellite_mode.png" width="180" alt="Satellite Mode"/>
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/05_file_explorer.png" width="180" alt="File Explorer"/>
+</p>
+
+*For complete screen walkthroughs and capability specs, see [docs/FEATURES.md](docs/FEATURES.md).*
 
 ---
 
@@ -77,9 +89,10 @@ OrbitFS-Client/
 │   │   └── desktopMain/     # Desktop JVM Launcher, AWT/ProcessBuilder Handlers, Desktop Repository
 │   └── libs/
 │       └── orbitfs-core-0.1.0.jar   # Core Pure-Java RPC & Transport Library
-├── docs/                    # Detailed technical sub-documentation & D2 diagrams
+├── docs/                    # Technical sub-documentation, diagrams & screenshots
 │   ├── diagrams/            # D2-generated SVG architecture & sequence diagrams
-│   ├── FEATURES.md          # Feature specification & capability list
+│   ├── screenshots/         # Dark space interface screenshots
+│   ├── FEATURES.md          # Feature specification & visual showcase
 │   ├── ARCHITECTURE.md      # System architecture & KMP patterns
 │   ├── DESIGN.md            # Low-Level Design (LLD) & protocol spec
 │   └── INSTALLATION.md      # Installation & build instructions
@@ -121,8 +134,7 @@ Quick build instructions. For full platform instructions, see [docs/INSTALLATION
 
 ## 📑 Documentation Index
 
-- [UI & Dark Space Screen Gallery (docs/UI_PREVIEW.md)](docs/UI_PREVIEW.md)
-- [Feature Specification (docs/FEATURES.md)](docs/FEATURES.md)
+- [Feature Showcase & Capabilities (docs/FEATURES.md)](docs/FEATURES.md)
 - [System Architecture (docs/ARCHITECTURE.md)](docs/ARCHITECTURE.md)
 - [Low-Level Design (docs/DESIGN.md)](docs/DESIGN.md)
 - [Installation Guide (docs/INSTALLATION.md)](docs/INSTALLATION.md)
