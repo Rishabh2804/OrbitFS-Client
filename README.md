@@ -4,7 +4,7 @@
 
 [![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/docs/multiplatform.html)
 [![Compose Multiplatform](https://img.shields.io/badge/Compose-Multiplatform-4285F4?logo=jetpackcompose&logoColor=white)](https://www.jetbrains.com/lp/compose-multiplatform/)
-[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen)](#building--running)
+[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen)](#-installation--build-guide)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 OrbitFS Client is a privacy-first, local-only, high-bandwidth peer-to-peer file sharing application engineered for **Android** and **Desktop (macOS, Windows, Linux)**. Built using **Kotlin Multiplatform (KMP)** and **Compose Multiplatform (CMP)**, OrbitFS operates completely independent of cloud servers, third-party proxies, and internet routing—delivering line-rate file streaming and sub-millisecond latencies across local area networks (LAN/WLAN).
@@ -13,27 +13,14 @@ OrbitFS Client is a privacy-first, local-only, high-bandwidth peer-to-peer file 
 
 ## 📚 Table of Contents
 
-- [Key Features Overview](#-key-features-overview)
 - [Interface Preview](#-interface-preview)
+- [Installation & Build Guide](#-installation--build-guide)
+- [Key Features Overview](#-key-features-overview)
 - [Architecture & Tech Stack](#%EF%B8%8F-architecture--tech-stack)
 - [Low-Level Design (LLD) Summary](#-low-level-design-lld-summary)
 - [Repository Structure](#-repository-structure)
-- [Installation & Build Guide](#-installation--build-guide)
 - [Documentation Index](#-documentation-index)
 - [License](#-license)
-
----
-
-## 🌟 Key Features Overview
-
-Below is a brief summary of OrbitFS Client capabilities. For in-depth technical documentation and visual tour, visit [docs/FEATURES.md](docs/FEATURES.md).
-
-- **Dual-Role Satellite Node Architecture**: Operates as both an active file explorer client and a background satellite file server on every device.
-- **Custom Binary-Framed RPC Protocol**: Length-prefixed 4-byte big-endian JSON framing protocol over TCP (`READ`, `WRITE`, `STAT`, `LIST`, `OPEN`, `CLOSE`).
-- **Zero-Config UDP Radar Discovery**: UDP broadcast beacons (Port 9999) with Android `MulticastLock` and dead-man timer stale-peer pruning.
-- **Ghost Launcher Runtime Interop**: Executes Java 21 server instances inside Android ART using `sun.misc.Unsafe` reflection desugaring patches.
-- **Strict Sandbox Path Canonicalization**: `SandboxGuard` canonical path validation prevents directory traversal security vulnerabilities.
-- **Advanced Transfer Engine**: Live speed calculation, progress notification syncing, one-tap cancel actions, and native **Show in Folder** navigation.
 
 ---
 
@@ -49,7 +36,58 @@ Below is a brief summary of OrbitFS Client capabilities. For in-depth technical 
   <img src="docs/screenshots/05_file_explorer.png" width="180" alt="File Explorer"/>
 </p>
 
-*For complete screen walkthroughs and capability specs, see [docs/FEATURES.md](docs/FEATURES.md).*
+*For complete feature specifications and dark space screen gallery, see [docs/FEATURES.md](docs/FEATURES.md).*
+
+---
+
+## 🛠️ Installation & Build Guide
+
+### Prerequisites
+- **JDK 21** or higher (`java -version`)
+- **Android SDK** (API Levels 26–35)
+- **Gradle 8.x** (wrapper included)
+
+### 1. Build & Run for Android
+- **Build Debug APK:**
+  ```bash
+  ./gradlew :composeApp:assembleDebug
+  ```
+  *Output APK location:* `composeApp/build/outputs/apk/debug/composeApp-debug.apk`
+
+- **Install & Run on Connected Device / Emulator:**
+  ```bash
+  ./gradlew :composeApp:installDebug
+  ```
+
+### 2. Build & Run for Desktop (macOS, Windows, Linux)
+- **Run Desktop App:**
+  ```bash
+  ./gradlew :composeApp:run
+  ```
+
+- **Package Standalone Executable / JAR:**
+  ```bash
+  ./gradlew :composeApp:desktopJar
+  ```
+  *Output location:* `composeApp/build/libs/composeApp-desktop.jar`
+
+- **Package Native Installers (DMG / DEB / MSI):**
+  ```bash
+  ./gradlew :composeApp:package
+  ```
+
+---
+
+## 🌟 Key Features Overview
+
+Below is a brief summary of OrbitFS Client capabilities. For in-depth technical documentation, visit [docs/FEATURES.md](docs/FEATURES.md).
+
+- **File Explorer Engine**: Remote directory navigation over TCP sockets, breadcrumb bar jumps, multi-select operations, multi-criteria sorting, and hidden file toggles.
+- **Active & Historical Transfer Manager**: Live telemetry speed calculation (`KB/s`, `MB/s`), ongoing notification progress syncing, one-tap **Cancel** action, "Show in Folder" navigation, and gesture-based `HorizontalPager` tab swiping.
+- **Zero-Config UDP Radar Discovery**: Automatic UDP broadcast discovery on Port 9999 with Android `MulticastLock`, dead-man timer stale-peer pruning, and profile deduplication.
+- **Satellite Mode (Local File Server)**: Turn any device into an active file server with custom port selection, folder picker integration, and Android Foreground Service protection.
+- **Profile & Identity Management**: Auto-generates space-themed Pilot Names and Avatars with one-tap seamless profile resets.
+- **Ghost Launcher Runtime Interop**: Executes Java 21 server instances inside Android ART using `sun.misc.Unsafe` reflection desugaring patches.
 
 ---
 
@@ -94,41 +132,10 @@ OrbitFS-Client/
 │   ├── screenshots/         # Dark space interface screenshots
 │   ├── FEATURES.md          # Feature specification & visual showcase
 │   ├── ARCHITECTURE.md      # System architecture & KMP patterns
-│   ├── DESIGN.md            # Low-Level Design (LLD) & protocol spec
-│   └── INSTALLATION.md      # Installation & build instructions
+│   └── DESIGN.md            # Low-Level Design (LLD) & protocol spec
 ├── AGENT.md                 # Technical flight recorder and architectural journal
 └── README.md                # Project README
 ```
-
----
-
-## 🛠️ Installation & Build Guide
-
-Quick build instructions. For full platform instructions, see [docs/INSTALLATION.md](docs/INSTALLATION.md).
-
-### Prerequisites
-- **JDK 21** or higher
-- **Android SDK** (API Levels 26–35)
-- **Gradle 8.x**
-
-### Quick Commands
-
-- **Build Android Debug APK:**
-  ```bash
-  ./gradlew :composeApp:assembleDebug
-  ```
-- **Install & Run on Android Device / Emulator:**
-  ```bash
-  ./gradlew :composeApp:installDebug
-  ```
-- **Run Desktop App (macOS / Windows / Linux):**
-  ```bash
-  ./gradlew :composeApp:run
-  ```
-- **Package Desktop Executable / JAR:**
-  ```bash
-  ./gradlew :composeApp:desktopJar
-  ```
 
 ---
 
@@ -137,7 +144,6 @@ Quick build instructions. For full platform instructions, see [docs/INSTALLATION
 - [Feature Showcase & Capabilities (docs/FEATURES.md)](docs/FEATURES.md)
 - [System Architecture (docs/ARCHITECTURE.md)](docs/ARCHITECTURE.md)
 - [Low-Level Design (docs/DESIGN.md)](docs/DESIGN.md)
-- [Installation Guide (docs/INSTALLATION.md)](docs/INSTALLATION.md)
 - [Technical Flight Recorder (AGENT.md)](AGENT.md)
 
 ---
