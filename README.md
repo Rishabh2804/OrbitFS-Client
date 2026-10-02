@@ -45,26 +45,31 @@ Below is a brief summary of OrbitFS Client capabilities. For in-depth technical 
 
 For full architectural patterns and threading details, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-```
-                       ┌────────────────────────────────────────┐
-                       │     Shared Presentation & Logic        │
-                       │             (commonMain)               │
-                       │  - FileBrowserViewModel & StateFlows   │
-                       │  - OrbitFSClientWrapper (RPC)          │
-                       │  - Shared Compose Material 3 UI        │
-                       └───────────────────┬────────────────────┘
-                                           │
-                    ┌──────────────────────┴──────────────────────┐
-                    │                                             │
-                    ▼                                             ▼
-  ┌───────────────────────────────────┐         ┌───────────────────────────────────┐
-  │       Android Implementation      │         │      Desktop Implementation       │
-  │            (androidMain)          │         │           (desktopMain)           │
-  │ - OrbitFSServerService (Foreground)│        │ - Desktop JVM Launcher (main.kt)  │
-  │ - Storage Access Framework (SAF)  │         │ - ProcessBuilder / macOS Finder   │
-  │ - Android Notification Controls   │         │ - Swing JFileChooser Dialogs      │
-  │ - WifiManager MulticastLock       │         │ - Standalone Desktop JAR Engine   │
-  └───────────────────────────────────┘         └───────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph CommonSub["Shared Presentation & Domain (commonMain)"]
+        VM["FileBrowserViewModel"]
+        State["BrowserState / StateFlows"]
+        Wrapper["OrbitFSClientWrapper (RPC)"]
+        UI["Compose Material 3 UI"]
+    end
+
+    subgraph AndroidPlatform["Android Platform (androidMain)"]
+        Service["OrbitFSServerService (Foreground)"]
+        SAF["AndroidLocalFileRepository (SAF)"]
+        Notif["NotificationActionReceiver"]
+        Lock["WifiManager MulticastLock"]
+    end
+
+    subgraph DesktopPlatform["Desktop Platform (desktopMain)"]
+        Launcher["Desktop JVM Main (main.kt)"]
+        DesktopRepo["DesktopLocalFileRepository"]
+        AWT["AWT Desktop / ProcessBuilder"]
+        Swing["JFileChooser"]
+    end
+
+    CommonSub --> AndroidPlatform
+    CommonSub --> DesktopPlatform
 ```
 
 | Layer | Technologies & Frameworks |
@@ -82,11 +87,35 @@ For full architectural patterns and threading details, see [docs/ARCHITECTURE.md
 
 OrbitFS uses a framed TCP socket protocol with 4-byte big-endian length headers. For sequence diagrams and state machine specifications, see [docs/DESIGN.md](docs/DESIGN.md).
 
+```mermaid
+graph LR
+    subgraph Header["4-Byte Header (Big-Endian Int)"]
+        H["Payload Length (e.g. 1024)"]
+    end
+    subgraph Payload["JSON RPC Payload"]
+        P["{'id': 1, 'method': 'READ', 'fd': '...', 'offset': 0, 'count': 65536}"]
+    end
+    Header --> Payload
 ```
-┌───────────────────────────┬──────────────────────────────────────────┐
-│   Length Header (4 bytes) │         JSON Payload (Variable)          │
-│   Big-Endian 32-bit Int   │   {"id":1, "method":"READ", ...}         │
-└───────────────────────────┴──────────────────────────────────────────┘
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User (App)
+    participant VM as FileBrowserViewModel
+    participant Client as OrbitFSClientWrapper
+    participant ServerNode as Satellite Server
+
+    User->>VM: Download File
+    VM->>Client: streamFile(path)
+    Client->>ServerNode: OPEN RPC
+    ServerNode-->>Client: Handle Result
+    loop Chunk Streaming
+        Client->>ServerNode: READ RPC (offset, count)
+        ServerNode-->>Client: Base64 Chunk Response
+        Client->>VM: Progress & Speed Update
+    end
+    Client->>ServerNode: CLOSE RPC
 ```
 
 ---

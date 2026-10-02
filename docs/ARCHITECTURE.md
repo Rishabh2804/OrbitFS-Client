@@ -4,28 +4,31 @@
 
 OrbitFS is structured as a Kotlin Multiplatform (KMP) project that isolates core domain logic, presentation state machines, and RPC protocol handlers into `commonMain`, while providing native platform implementations in `androidMain` and `desktopMain`.
 
-```
-                               ┌────────────────────────────────────────────────┐
-                               │           Shared Domain & Presentation         │
-                               │                   (commonMain)                 │
-                               │  - FileBrowserViewModel (StateFlow, Channels)  │
-                               │  - ConnectionManager & ConnectionState          │
-                               │  - OrbitFSClientWrapper (RPC Client Protocol)  │
-                               │  - OrbitServerPatcher & Security Handlers      │
-                               │  - Shared Compose Material 3 UI Components     │
-                               └───────────────────────┬────────────────────────┘
-                                                       │
-                           ┌───────────────────────────┴───────────────────────────┐
-                           │                                                       │
-                           ▼                                                       ▼
-        ┌────────────────────────────────────┐                  ┌────────────────────────────────────┐
-        │       Android Platform Layer       │                  │       Desktop Platform Layer       │
-        │            (androidMain)           │                  │            (desktopMain)           │
-        │ - OrbitFSServerService (Foreground)│                  │ - Desktop JVM Main (main.kt)       │
-        │ - AndroidLocalFileRepository (SAF) │                  │ - DesktopLocalFileRepository       │
-        │ - NotificationActionReceiver       │                  │ - Swing JFileChooser & AWT Desktop │
-        │ - WifiManager MulticastLock        │                  │ - ProcessBuilder / macOS Finder    │
-        └────────────────────────────────────┘                  └────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph CommonSub["Shared Presentation & Domain (commonMain)"]
+        VM["FileBrowserViewModel"]
+        State["BrowserState / StateFlows"]
+        Wrapper["OrbitFSClientWrapper (RPC)"]
+        UI["Compose Material 3 UI"]
+    end
+
+    subgraph AndroidPlatform["Android Platform (androidMain)"]
+        Service["OrbitFSServerService (Foreground)"]
+        SAF["AndroidLocalFileRepository (SAF)"]
+        Notif["NotificationActionReceiver"]
+        Lock["WifiManager MulticastLock"]
+    end
+
+    subgraph DesktopPlatform["Desktop Platform (desktopMain)"]
+        Launcher["Desktop JVM Main (main.kt)"]
+        DesktopRepo["DesktopLocalFileRepository"]
+        AWT["AWT Desktop / ProcessBuilder"]
+        Swing["JFileChooser"]
+    end
+
+    CommonSub --> AndroidPlatform
+    CommonSub --> DesktopPlatform
 ```
 
 ---

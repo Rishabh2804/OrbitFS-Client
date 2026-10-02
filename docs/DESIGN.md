@@ -6,11 +6,15 @@
 
 OrbitFS communicates over raw TCP sockets using a 4-byte length-prefixed binary header followed by a minified JSON command payload.
 
-```
-┌───────────────────────────┬──────────────────────────────────────────┐
-│   Length Header (4 bytes) │         JSON Payload (Variable)          │
-│   Big-Endian 32-bit Int   │   {"id":1, "method":"READ", ...}         │
-└───────────────────────────┴──────────────────────────────────────────┘
+```mermaid
+graph LR
+    subgraph Header["4-Byte Header (Big-Endian Int)"]
+        H["Payload Length (e.g. 1024)"]
+    end
+    subgraph Payload["JSON RPC Payload"]
+        P["{'id': 1, 'method': 'READ', 'fd': '...', 'offset': 0, 'count': 65536}"]
+    end
+    Header --> Payload
 ```
 
 #### Protocol Opcodes / Methods:
@@ -27,45 +31,50 @@ OrbitFS communicates over raw TCP sockets using a 4-byte length-prefixed binary 
 ### 2. State Machine Diagrams
 
 #### Connection Lifecycle
-```
-[ Disconnected ] ──────( User Connects )──────► [ Connecting ]
-       ▲                                               │
-       │                                       ( Success / Error )
-       │                                               │
-       └─────────────────( Disconnect )───────────────┤
-                                                       ▼
-                                              [ Connected / Error ]
+```mermaid
+stateDiagram-v2
+    [*] --> Disconnected
+    Disconnected --> Connecting: Connect Request
+    Connecting --> Connected: Handshake Success
+    Connecting --> Error: Handshake Failed
+    Connected --> Disconnected: User Disconnect
+    Error --> Disconnected: Reset / Retry
 ```
 
 #### File Download State Machine
-```
-[ NOT_STARTED ] ───( Start Stream )───► [ IN_PROGRESS ] ───( Finished )───► [ COMPLETE ]
-                                              │
-                                     ( Cancel / Failure )
-                                              │
-                                              ▼
-                                    [ CANCELLED / FAILED ]
+```mermaid
+stateDiagram-v2
+    [*] --> NOT_STARTED
+    NOT_STARTED --> IN_PROGRESS: Start Transfer
+    IN_PROGRESS --> COMPLETE: Stream Completed
+    IN_PROGRESS --> CANCELLED: User Cancelled / Socket Teardown
+    IN_PROGRESS --> FAILED: Network / I/O Exception
 ```
 
 ---
 
 ### 3. Data Transfer Sequence Diagram
 
-```
-User (App)            FileBrowserViewModel          OrbitFSClientWrapper           Satellite Server
-    │                           │                            │                            │
-    │ ─── 1. Download File ───► │                            │                            │
-    │                           │ ─── 2. getOutputStream ──► │                            │
-    │                           │ ─── 3. streamFile() ─────► │                            │
-    │                           │                            │ ─── 4. OPEN RPC ─────────► │
-    │                           │                            │ ◄── Handle Result ──────── │
-    │                           │                            │                            │
-    │                           │                            │ ┌─ 5. READ Loop (Chunk) ─┐ │
-    │                           │                            │ │   READ RPC ──────────► │ │
-    │                           │                            │ │   Base64 Chunk ◄────── │ │
-    │                           │ ◄── 6. Progress (p, t) ─── │ └────────────────────────┘ │
-    │                           │                            │                            │
-    │ ◄── 7. UI Update (B/s) ── │                            │ ─── 8. CLOSE RPC ────────► │
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User (App)
+    participant VM as FileBrowserViewModel
+    participant Client as OrbitFSClientWrapper
+    participant Server as Satellite Server
+
+    User->>VM: Download File (file)
+    VM->>VM: getOutputStream()
+    VM->>Client: streamFile(path, stream)
+    Client->>Server: OPEN RPC (path)
+    Server-->>Client: Handle Result
+    loop Chunk Streaming
+        Client->>Server: READ RPC (offset, count)
+        Server-->>Client: Base64 Chunk Response
+        Client->>VM: Progress Update (bytes, total)
+        VM-->>User: Live UI Speed & Progress Update
+    end
+    Client->>Server: CLOSE RPC (handle)
 ```
 
 ---
